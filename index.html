@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Runneth — Game Bible</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
+  <style>
+    /* ── TOKENS ──────────────────────────────────────────────────────────── */
+    :root {
+      --bg:          #0f0f0f;
+      --surface:     #161616;
+      --surface2:    #1e1e1e;
+      --border:      #2a2a2a;
+      --text:        #c8c4ba;
+      --text-dim:    #5a5a5a;
+      --text-bright: #f0ebe0;
+      --accent:      #c8a455;
+      --narrative:   #7b6fa0;
+      --developer:   #4a7c5e;
+      --danger:      #a03030;
+      --sidebar-w:   248px;
+      --header-h:    52px;
+    }
+
+    /* ── RESET ───────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Georgia, 'Times New Roman', serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      overflow: hidden;
+    }
+    button { font-family: inherit; }
+    a { color: var(--accent); }
+
+    /* ── LOGIN ───────────────────────────────────────────────────────────── */
+    #login-screen {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+    .login-card {
+      text-align: center;
+      padding: 3rem 2.5rem;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      width: min(340px, 90vw);
+    }
+    .login-glyph { font-size: 2.2rem; color: var(--accent); margin-bottom: 1rem; }
+    .login-card h1 {
+      font-size: 1.7rem;
+      color: var(--text-bright);
+      letter-spacing: 0.12em;
+      font-weight: normal;
+    }
+    .login-card p {
+      color: var(--text-dim);
+      font-size: 0.8rem;
+      letter-spacing: 0.15em;
+      margin: 0.4rem 0 2rem;
+    }
+    #login-btn {
+      background: var(--accent);
+      color: #0f0f0f;
+      border: none;
+      padding: 0.75rem 2rem;
+      font-size: 0.88rem;
+      font-weight: bold;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      width: 100%;
+      transition: opacity 0.2s;
+    }
+    #login-btn:hover { opacity: 0.85; }
+    .login-note { font-size: 0.72rem; color: var(--text-dim); margin-top: 1rem; }
+
+    /* ── APP SHELL ───────────────────────────────────────────────────────── */
+    #app { display: flex; flex-direction: column; height: 100vh; }
+
+    #header {
+      height: var(--header-h);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 1.5rem;
+      flex-shrink: 0;
+    }
+    .header-title {
+      font-size: 0.75rem;
+      letter-spacing: 0.22em;
+      color: var(--accent);
+      font-family: monospace;
+    }
+    .view-toggles { display: flex; gap: 0.35rem; }
+    .view-toggle {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 0.28rem 0.9rem;
+      font-size: 0.72rem;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: monospace;
+    }
+    .view-toggle:hover { border-color: var(--accent); color: var(--accent); }
+    .view-toggle.active {
+      background: var(--accent);
+      color: #0f0f0f;
+      border-color: var(--accent);
+      font-weight: bold;
+    }
+
+    .layout { display: flex; flex: 1; overflow: hidden; }
+
+    /* ── SIDEBAR ─────────────────────────────────────────────────────────── */
+    #sidebar {
+      width: var(--sidebar-w);
+      flex-shrink: 0;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding-bottom: 3rem;
+    }
+    #sidebar::-webkit-scrollbar { width: 3px; }
+    #sidebar::-webkit-scrollbar-thumb { background: var(--border); }
+
+    .nav-group {
+      font-size: 0.63rem;
+      letter-spacing: 0.22em;
+      color: var(--text-dim);
+      padding: 1.2rem 1rem 0.35rem;
+      font-family: monospace;
+    }
+    .nav-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.55rem;
+      width: 100%;
+      background: transparent;
+      border: none;
+      border-left: 2px solid transparent;
+      color: var(--text);
+      padding: 0.45rem 1rem 0.45rem 0.85rem;
+      text-align: left;
+      cursor: pointer;
+      font-size: 0.8rem;
+      line-height: 1.35;
+      transition: background 0.1s;
+    }
+    .nav-item:hover { background: var(--surface2); }
+    .nav-item.active {
+      background: var(--surface2);
+      border-left-color: var(--accent);
+      color: var(--text-bright);
+    }
+    .nav-icon {
+      font-size: 0.6rem;
+      font-family: monospace;
+      color: var(--text-dim);
+      margin-top: 0.2rem;
+      flex-shrink: 0;
+      width: 12px;
+    }
+    .nav-item.active .nav-icon { color: var(--accent); }
+
+    /* ── CONTENT ─────────────────────────────────────────────────────────── */
+    #content {
+      flex: 1;
+      overflow-y: auto;
+      background: var(--bg);
+    }
+    #content::-webkit-scrollbar { width: 5px; }
+    #content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    #content-inner {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 2.5rem 3rem 5rem;
+    }
+
+    /* ── PAGE HEADER ─────────────────────────────────────────────────────── */
+    .page-header { margin-bottom: 1.4rem; }
+    .page-badge {
+      display: block;
+      font-size: 0.62rem;
+      letter-spacing: 0.22em;
+      color: var(--accent);
+      font-family: monospace;
+      margin-bottom: 0.4rem;
+    }
+    .page-title {
+      font-size: 1.75rem;
+      color: var(--text-bright);
+      font-weight: normal;
+      line-height: 1.2;
+    }
+
+    /* ── CHIPS ───────────────────────────────────────────────────────────── */
+    .chips-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.35rem;
+      margin-bottom: 0.5rem;
+    }
+    .chips-label {
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      letter-spacing: 0.04em;
+    }
+    .chip {
+      font-size: 0.7rem;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 0.18rem 0.55rem;
+      font-family: monospace;
+    }
+    .chip-link {
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .chip-link:hover {
+      background: var(--surface);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* ── ARC ROW ─────────────────────────────────────────────────────────── */
+    .arc-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.2rem;
+      margin: 0.6rem 0 1.8rem;
+      padding: 0.65rem 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+    }
+    .arc-note {
+      font-size: 0.76rem;
+      color: var(--text-dim);
+      font-style: italic;
+    }
+
+    /* ── SECTIONS ────────────────────────────────────────────────────────── */
+    .section {
+      margin-top: 2rem;
+      padding-bottom: 1.8rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .section:last-of-type { border-bottom: none; }
+
+    .section-label {
+      font-size: 0.62rem;
+      letter-spacing: 0.22em;
+      font-family: monospace;
+      padding-bottom: 0.5rem;
+      border-bottom: 2px solid var(--border);
+      margin-bottom: 1rem;
+    }
+    .section-narrative .section-label { color: var(--narrative); border-bottom-color: var(--narrative); }
+    .section-developer .section-label { color: var(--developer); border-bottom-color: var(--developer); }
+    .section-all      .section-label { color: var(--accent);    border-bottom-color: var(--border); }
+
+    /* ── MARKDOWN BODY ───────────────────────────────────────────────────── */
+    .section-body { line-height: 1.85; }
+    .section-body h3 {
+      color: var(--text-bright);
+      font-size: 0.88rem;
+      font-weight: normal;
+      letter-spacing: 0.06em;
+      margin: 1.4rem 0 0.5rem;
+      text-transform: uppercase;
+    }
+    .section-body p { margin-bottom: 0.85rem; }
+    .section-body ul,
+    .section-body ol { margin: 0.4rem 0 0.85rem 1.5rem; }
+    .section-body li { margin-bottom: 0.3rem; }
+    .section-body blockquote {
+      border-left: 3px solid var(--border);
+      padding: 0.4rem 0 0.4rem 1.1rem;
+      color: var(--text-dim);
+      font-style: italic;
+      margin: 0.8rem 0;
+      line-height: 1.7;
+    }
+    .section-body code {
+      background: var(--surface2);
+      padding: 0.1rem 0.4rem;
+      font-size: 0.8em;
+      font-family: monospace;
+    }
+    .section-body em { opacity: 0.8; }
+    .section-body strong { color: var(--text-bright); }
+    .section-body hr { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
+    .section-body table { border-collapse: collapse; font-size: 0.82rem; margin: 0.8rem 0; width: 100%; }
+    .section-body th, .section-body td {
+      border: 1px solid var(--border);
+      padding: 0.4rem 0.7rem;
+      text-align: left;
+    }
+    .section-body th { background: var(--surface); color: var(--text-bright); }
+
+    /* ── EDIT BAR ────────────────────────────────────────────────────────── */
+    .edit-bar { margin-top: 2.5rem; display: flex; justify-content: flex-end; }
+    .btn-edit {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 0.38rem 1.2rem;
+      font-size: 0.75rem;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      font-family: monospace;
+      transition: all 0.15s;
+    }
+    .btn-edit:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── EDIT MODE ───────────────────────────────────────────────────────── */
+    .edit-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 0.7rem;
+      margin-bottom: 1rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .btn-save {
+      background: var(--accent);
+      color: #0f0f0f;
+      border: none;
+      padding: 0.38rem 1.3rem;
+      font-size: 0.78rem;
+      font-weight: bold;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      font-family: monospace;
+      transition: opacity 0.15s;
+    }
+    .btn-save:hover { opacity: 0.85; }
+    .btn-save:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-cancel {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 0.38rem 1rem;
+      font-size: 0.78rem;
+      font-family: monospace;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-cancel:hover { border-color: var(--danger); color: var(--danger); }
+    .edit-hint { font-size: 0.7rem; color: var(--text-dim); font-style: italic; margin-left: auto; }
+    .edit-textarea {
+      width: 100%;
+      min-height: 72vh;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: 'Courier New', monospace;
+      font-size: 0.8rem;
+      line-height: 1.75;
+      padding: 1.2rem;
+      resize: vertical;
+      outline: none;
+    }
+    .edit-textarea:focus { border-color: var(--accent); }
+
+    /* ── STATUS & TOAST ──────────────────────────────────────────────────── */
+    .state-msg {
+      margin-top: 5rem;
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      letter-spacing: 0.08em;
+      font-family: monospace;
+    }
+    .state-msg.error { color: var(--danger); }
+
+    .toast {
+      position: fixed;
+      bottom: 1.8rem;
+      right: 1.8rem;
+      background: var(--accent);
+      color: #0f0f0f;
+      padding: 0.55rem 1.3rem;
+      font-size: 0.78rem;
+      font-weight: bold;
+      font-family: monospace;
+      letter-spacing: 0.06em;
+      opacity: 1;
+      transition: opacity 0.4s;
+      pointer-events: none;
+      z-index: 9999;
+    }
+    .toast.fade { opacity: 0; }
+  </style>
+</head>
+<body>
+
+<!-- ── LOGIN ──────────────────────────────────────────────────────────────── -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-glyph">◆</div>
+    <h1>RUNNETH</h1>
+    <p>GAME BIBLE</p>
+    <button id="login-btn" onclick="login()">Sign in with Google</button>
+    <p class="login-note">Access is restricted to invited accounts.</p>
+  </div>
+</div>
+
+<!-- ── APP ────────────────────────────────────────────────────────────────── -->
+<div id="app" hidden>
+  <header id="header">
+    <div class="header-title">◆ &nbsp;RUNNETH — GAME BIBLE</div>
+    <div class="view-toggles">
+      <button class="view-toggle active" data-view="full">Full</button>
+      <button class="view-toggle"        data-view="narrative">Narrative</button>
+      <button class="view-toggle"        data-view="developer">Developer</button>
+    </div>
+  </header>
+  <div class="layout">
+    <nav id="sidebar"></nav>
+    <main id="content">
+      <div id="content-inner"></div>
+    </main>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════════
+//  CONFIG
+//  ─────
+//  Before deploying:
+//  1. Go to https://console.cloud.google.com
+//  2. Create a project → APIs & Services → Enable "Google Drive API"
+//  3. Credentials → + Create Credentials → OAuth 2.0 Client ID → Web application
+//  4. Under "Authorized JavaScript origins" add your domain
+//     (also add http://localhost for local testing)
+//  5. Copy the Client ID and paste it below
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const CLIENT_ID          = 'YOUR_OAUTH_CLIENT_ID.apps.googleusercontent.com';
+const SHARED_DRIVE_NAME  = 'Runneth';
+const INDEX_FILENAME     = '_index.json';
+const DRIVE_SCOPE        = 'https://www.googleapis.com/auth/drive';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let accessToken     = null;
+let driveId         = null;
+let manifest        = null;
+let fileIdCache     = {};   // filename  → Drive file ID
+let contentCache    = {};   // fileId    → raw text
+
+let currentView     = 'full';
+let currentPageMeta = null;
+let currentPageType = null;   // 'beat' | 'entity'
+let editSavedHTML   = null;   // snapshot before entering edit mode
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  AUTH  (Google Identity Services)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let tokenClient;
+
+function initAuth() {
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: DRIVE_SCOPE,
+    callback: async (resp) => {
+      if (resp.error) { showError('Sign-in failed: ' + resp.error); return; }
+      accessToken = resp.access_token;
+      document.getElementById('login-screen').hidden = true;
+      document.getElementById('app').hidden = false;
+      await startApp();
+    },
+  });
+}
+
+function login() {
+  tokenClient.requestAccessToken();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  GOOGLE DRIVE API
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function driveGet(path) {
+  const resp = await fetch(`https://www.googleapis.com/drive/v3/${path}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (resp.status === 401) { login(); return null; }
+  if (!resp.ok) throw new Error(`Drive API ${resp.status}: ${await resp.text()}`);
+  return resp.json();
+}
+
+async function driveGetMedia(fileId) {
+  if (contentCache[fileId]) return contentCache[fileId];
+  const resp = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!resp.ok) throw new Error(`Could not read file (${resp.status})`);
+  const text = await resp.text();
+  contentCache[fileId] = text;
+  return text;
+}
+
+async function drivePatch(fileId, content) {
+  const resp = await fetch(
+    `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&supportsAllDrives=true`,
+    {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'text/plain; charset=utf-8',
+      },
+      body: content,
+    }
+  );
+  if (!resp.ok) throw new Error(`Save failed (${resp.status})`);
+  contentCache[fileId] = content;  // update cache
+}
+
+async function resolveSharedDrive() {
+  const data = await driveGet('drives?pageSize=50');
+  const drive = (data.drives || []).find(d => d.name === SHARED_DRIVE_NAME);
+  if (!drive) throw new Error(
+    `Shared drive "${SHARED_DRIVE_NAME}" not found. ` +
+    `Make sure you are signed in to the correct Google account.`
+  );
+  return drive.id;
+}
+
+async function resolveFileId(filename) {
+  if (fileIdCache[filename]) return fileIdCache[filename];
+  const q = encodeURIComponent(`name='${filename}' and trashed=false`);
+  const data = await driveGet(
+    `files?q=${q}&includeItemsFromAllDrives=true&supportsAllDrives=true` +
+    `&corpora=drive&driveId=${driveId}&fields=files(id,name)`
+  );
+  const file = (data.files || [])[0];
+  if (!file) throw new Error(`File not found in Drive: ${filename}`);
+  fileIdCache[filename] = file.id;
+  return file.id;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function startApp() {
+  showLoading('Connecting to game bible…');
+  try {
+    driveId = await resolveSharedDrive();
+    const indexId   = await resolveFileId(INDEX_FILENAME);
+    const indexText = await driveGetMedia(indexId);
+    manifest = JSON.parse(indexText);
+    renderSidebar();
+    if (manifest.beats?.[0]) await openBeat(manifest.beats[0]);
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  SIDEBAR
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function renderSidebar() {
+  const nav = document.getElementById('sidebar');
+  const ICONS = { intro: '◆', tutorial: 'T', level: 'L' };
+  let html = '';
+
+  html += `<div class="nav-group">STORY</div>`;
+  for (const beat of manifest.beats) {
+    html += `<button class="nav-item" data-id="${beat.id}" data-type="beat">
+      <span class="nav-icon">${ICONS[beat.type] || '·'}</span>
+      <span>${beat.title}</span>
+    </button>`;
+  }
+
+  html += `<div class="nav-group">CHARACTERS</div>`;
+  for (const c of manifest.entities.characters) {
+    html += `<button class="nav-item" data-id="${c.id}" data-type="entity">
+      <span class="nav-icon">C</span><span>${c.name}</span>
+    </button>`;
+  }
+
+  html += `<div class="nav-group">ARTEFACTS</div>`;
+  for (const a of manifest.entities.artefacts) {
+    html += `<button class="nav-item" data-id="${a.id}" data-type="entity">
+      <span class="nav-icon">A</span><span>${a.name}</span>
+    </button>`;
+  }
+
+  html += `<div class="nav-group">LOCATIONS</div>`;
+  for (const l of manifest.entities.locations) {
+    html += `<button class="nav-item" data-id="${l.id}" data-type="entity">
+      <span class="nav-icon">L</span><span>${l.name}</span>
+    </button>`;
+  }
+
+  nav.innerHTML = html;
+
+  // Single delegated click handler — no inline onclick needed
+  nav.addEventListener('click', e => {
+    const btn = e.target.closest('.nav-item');
+    if (!btn) return;
+    const { id, type } = btn.dataset;
+    if (type === 'beat') {
+      const beat = manifest.beats.find(b => b.id === id);
+      if (beat) openBeat(beat);
+    } else {
+      const entity = findEntityById(id);
+      if (entity) openEntity(entity);
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  NAVIGATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function openBeat(beat) {
+  setActiveNav(beat.id);
+  currentPageMeta = beat;
+  currentPageType = 'beat';
+  showLoading('Loading…');
+  try {
+    const fileId  = await resolveFileId(beat.path.split('/').pop());
+    const content = await driveGetMedia(fileId);
+    renderBeat(beat, content, fileId);
+  } catch (e) { showError(e.message); }
+}
+
+async function openEntity(entity) {
+  setActiveNav(entity.id);
+  currentPageMeta = entity;
+  currentPageType = 'entity';
+  showLoading('Loading…');
+  try {
+    const fileId  = await resolveFileId(entity.path.split('/').pop());
+    const content = await driveGetMedia(fileId);
+    renderEntity(entity, content, fileId);
+  } catch (e) { showError(e.message); }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  PARSING
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function parseFrontmatter(raw) {
+  const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
+  if (!m) return { fm: {}, body: raw };
+  const body = raw.slice(m[0].length);
+  const fm   = {};
+  for (const line of m[1].split('\n')) {
+    const colon = line.indexOf(':');
+    if (colon < 1) continue;
+    const key = line.slice(0, colon).trim();
+    const val = line.slice(colon + 1).trim();
+    if (val.startsWith('[') && val.endsWith(']')) {
+      fm[key] = val.slice(1, -1)
+        .split(',')
+        .map(s => s.trim().replace(/^["']|["']$/g, ''))
+        .filter(Boolean);
+    } else {
+      fm[key] = val.replace(/^["']|["']$/g, '') || null;
+    }
+  }
+  return { fm, body };
+}
+
+function parseSections(body) {
+  const sections = [];
+  let name   = null;
+  let buffer = [];
+  for (const line of body.split('\n')) {
+    if (line.startsWith('## ')) {
+      if (name !== null) sections.push({ name, content: buffer.join('\n').trim() });
+      name   = line.slice(3).trim();
+      buffer = [];
+    } else {
+      buffer.push(line);
+    }
+  }
+  if (name !== null) sections.push({ name, content: buffer.join('\n').trim() });
+  return sections;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  RENDER — BEAT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const NARRATIVE_SECTIONS = new Set(['story', 'copywriting', 'lore']);
+const DEVELOPER_SECTIONS = new Set(['gameplay', 'behaviour', 'behavior', 'scoring']);
+
+function renderBeat(meta, raw, fileId) {
+  const { fm, body } = parseFrontmatter(raw);
+  const sections     = parseSections(body);
+
+  let html = `
+    <div class="page-header">
+      <span class="page-badge">${(fm.type || meta.type || '').toUpperCase()}</span>
+      <h1 class="page-title">${fm.title || meta.title}</h1>
+    </div>`;
+
+  // Entity + artefact chips
+  const chips = [...(fm.entities || []), ...(fm.artefacts || [])].filter(Boolean);
+  if (chips.length) {
+    html += `<div class="chips-row">${chips.map(entityChip).join('')}</div>`;
+  }
+
+  // Arc notes — narrative view only
+  if (fm.gremlin_mood || fm.elara_arc) {
+    html += `<div class="arc-row section-narrative">`;
+    if (fm.gremlin_mood) html += `<span class="arc-note">🔴 ${escHtml(fm.gremlin_mood)}</span>`;
+    if (fm.elara_arc)    html += `<span class="arc-note">✍️ ${escHtml(fm.elara_arc)}</span>`;
+    html += `</div>`;
+  }
+
+  for (const { name, content } of sections) {
+    if (!content) continue;
+    const key = name.toLowerCase();
+    const cls = DEVELOPER_SECTIONS.has(key) ? 'section-developer'
+              : NARRATIVE_SECTIONS.has(key) ? 'section-narrative'
+              : 'section-all';
+    html += sectionBlock(name, content, cls);
+  }
+
+  html += editBar(fileId);
+  setContent(html);
+  applyView();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  RENDER — ENTITY
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function renderEntity(meta, raw, fileId) {
+  const { fm, body } = parseFrontmatter(raw);
+  const sections     = parseSections(body);
+
+  let html = `
+    <div class="page-header">
+      <span class="page-badge">${(fm.type || fm.role || '').toUpperCase()}</span>
+      <h1 class="page-title">${fm.name || meta.name}</h1>
+    </div>`;
+
+  if (fm.appears_in?.length) {
+    html += `<div class="chips-row">
+      <span class="chips-label">Appears in:</span>
+      ${fm.appears_in.map(beatChip).join('')}
+    </div>`;
+  }
+
+  if (fm.acquired_in) {
+    html += `<div class="chips-row">
+      <span class="chips-label">First acquired:</span>
+      ${beatChip(fm.acquired_in)}
+    </div>`;
+  }
+
+  for (const { name, content } of sections) {
+    if (!content) continue;
+    const key = name.toLowerCase();
+    const cls = DEVELOPER_SECTIONS.has(key) ? 'section-developer'
+              : NARRATIVE_SECTIONS.has(key) ? 'section-narrative'
+              : 'section-all';
+    html += sectionBlock(name, content, cls);
+  }
+
+  html += editBar(fileId);
+  setContent(html);
+  applyView();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  SHARED RENDER HELPERS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function sectionBlock(name, content, cls) {
+  return `<div class="section ${cls}">
+    <div class="section-label">${name.toUpperCase()}</div>
+    <div class="section-body">${marked.parse(content)}</div>
+  </div>`;
+}
+
+function editBar(fileId) {
+  return `<div class="edit-bar">
+    <button class="btn-edit" data-file-id="${fileId}" onclick="enterEdit(this)">Edit</button>
+  </div>`;
+}
+
+// Chip for an entity ID → clickable button that calls openEntity()
+function entityChip(id) {
+  const entity = findEntityById(id);
+  if (!entity) return `<span class="chip">${escHtml(id)}</span>`;
+  // Store id/type only in data attrs; look up full meta on click
+  return `<button class="chip chip-link" data-id="${entity.id}" data-type="entity"
+    onclick="openEntity(getEntityById('${entity.id}'))">${escHtml(entity.name)}</button>`;
+}
+
+// Chip for a beat ID → clickable button that calls openBeat()
+function beatChip(id) {
+  const beat = manifest.beats.find(b => b.id === id);
+  if (!beat) return `<span class="chip">${escHtml(id)}</span>`;
+  return `<button class="chip chip-link" data-id="${beat.id}" data-type="beat"
+    onclick="openBeat(getBeatById('${beat.id}'))">${escHtml(beat.title)}</button>`;
+}
+
+// Safe lookups called from inline onclick
+function getEntityById(id) { return findEntityById(id); }
+function getBeatById(id)   { return manifest.beats.find(b => b.id === id); }
+
+function findEntityById(id) {
+  for (const list of Object.values(manifest.entities)) {
+    const found = list.find(e => e.id === id);
+    if (found) return found;
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  EDIT MODE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function enterEdit(btn) {
+  const fileId = btn.dataset.fileId;
+  editSavedHTML = document.getElementById('content-inner').innerHTML;
+  const raw = contentCache[fileId] || '';
+  setContent(`
+    <div class="edit-toolbar">
+      <button class="btn-save" onclick="saveEdit('${fileId}')">Save</button>
+      <button class="btn-cancel" onclick="cancelEdit()">Cancel</button>
+      <span class="edit-hint">Editing markdown — save to update Drive</span>
+    </div>
+    <textarea id="edit-textarea" class="edit-textarea" spellcheck="true">${escHtml(raw)}</textarea>
+  `);
+  document.getElementById('edit-textarea').focus();
+}
+
+async function saveEdit(fileId) {
+  const content = document.getElementById('edit-textarea').value;
+  const saveBtn = document.querySelector('.btn-save');
+  saveBtn.textContent = 'Saving…';
+  saveBtn.disabled = true;
+  try {
+    await drivePatch(fileId, content);
+    toast('Saved ✓');
+    // Re-render current page with updated content
+    if (currentPageType === 'beat')   await openBeat(currentPageMeta);
+    else                              await openEntity(currentPageMeta);
+  } catch (e) {
+    saveBtn.textContent = 'Save';
+    saveBtn.disabled = false;
+    showError(e.message);
+  }
+}
+
+function cancelEdit() {
+  document.getElementById('content-inner').innerHTML = editSavedHTML;
+  applyView();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  VIEW MODE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.view-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentView = btn.dataset.view;
+      document.querySelectorAll('.view-toggle')
+        .forEach(b => b.classList.toggle('active', b === btn));
+      applyView();
+    });
+  });
+});
+
+function applyView() {
+  document.querySelectorAll('#content-inner .section, #content-inner .arc-row')
+    .forEach(el => {
+      const isNarrative = el.classList.contains('section-narrative');
+      const isDeveloper = el.classList.contains('section-developer');
+      if      (currentView === 'full')      el.hidden = false;
+      else if (currentView === 'narrative') el.hidden = isDeveloper;
+      else if (currentView === 'developer') el.hidden = isNarrative;
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function setContent(html)   { document.getElementById('content-inner').innerHTML = html; }
+function showLoading(msg)   { setContent(`<div class="state-msg">${msg}</div>`); }
+function showError(msg)     { setContent(`<div class="state-msg error">⚠ ${msg}</div>`); }
+
+function toast(msg) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => {
+    el.classList.add('fade');
+    setTimeout(() => el.remove(), 400);
+  }, 1800);
+}
+
+function setActiveNav(id) {
+  document.querySelectorAll('.nav-item')
+    .forEach(el => el.classList.toggle('active', el.dataset.id === id));
+}
+
+function escHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  BOOT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+window.addEventListener('load', () => {
+  // Wait for the GIS library to load before initialising auth
+  const check = setInterval(() => {
+    if (window.google?.accounts?.oauth2) {
+      clearInterval(check);
+      initAuth();
+    }
+  }, 100);
+});
+</script>
+
+<!-- Google Identity Services — loaded last, non-blocking -->
+<script src="https://accounts.google.com/gsi/client" async></script>
+
+</body>
+</html>
