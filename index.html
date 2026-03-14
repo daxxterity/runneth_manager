@@ -423,6 +423,7 @@
       <button class="view-toggle active" data-view="full">Full</button>
       <button class="view-toggle"        data-view="narrative">Narrative</button>
       <button class="view-toggle"        data-view="developer">Developer</button>
+      <button class="view-toggle"        id="admin-btn" onclick="openAdmin()">Admin</button>
     </div>
   </header>
   <div class="layout">
@@ -953,6 +954,50 @@ function escHtml(str) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  ADMIN — SCOPE MANAGER (Steps 1 & 2)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let adminSavedHTML = null;  // snapshot of content-inner before Admin opens
+
+async function fetchDriveTree() {
+  const data = await driveGet(
+    `files?corpora=drive&driveId=${driveId}` +
+    `&includeItemsFromAllDrives=true&supportsAllDrives=true` +
+    `&fields=files(id,name,mimeType,parents,modifiedTime)` +
+    `&pageSize=100`
+  );
+  return data.files || [];
+}
+
+async function openAdmin() {
+  adminSavedHTML = document.getElementById('content-inner').innerHTML;
+  showLoading('Loading Drive file list…');
+  try {
+    const files = await fetchDriveTree();
+    console.log('Drive files:', files);
+    setContent(`
+      <div class="page-header">
+        <span class="page-badge">ADMIN</span>
+        <h1 class="page-title">Scope Manager</h1>
+      </div>
+      <div style="margin-bottom:1.5rem;">
+        <button class="btn-cancel" onclick="closeAdmin()">← Back</button>
+      </div>
+      <div class="state-msg" style="margin-top:1rem;text-align:left;">
+        Drive files loaded — ${files.length} files found. See console for details.
+      </div>
+    `);
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
+function closeAdmin() {
+  document.getElementById('content-inner').innerHTML = adminSavedHTML;
+  applyView();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
