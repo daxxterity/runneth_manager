@@ -400,6 +400,83 @@
       z-index: 9999;
     }
     .toast.fade { opacity: 0; }
+
+    /* ── SCOPE MANAGER ───────────────────────────────────────────────────── */
+    .scope-summary {
+      font-size: 0.75rem;
+      font-family: monospace;
+      color: var(--text-dim);
+      letter-spacing: 0.08em;
+      margin: 1.2rem 0 1.8rem;
+      padding: 0.6rem 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+    }
+    .scope-folder-row {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.45rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .scope-file-row {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.35rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .scope-chevron {
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      font-size: 0.65rem;
+      cursor: pointer;
+      width: 16px;
+      flex-shrink: 0;
+      padding: 0;
+    }
+    .scope-name {
+      flex: 1;
+      font-size: 0.82rem;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .scope-pill {
+      font-size: 0.62rem;
+      font-family: monospace;
+      letter-spacing: 0.08em;
+      padding: 0.1rem 0.5rem;
+      border: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .scope-pill-tracked { color: var(--accent);   border-color: var(--accent); }
+    .scope-pill-ignored { color: var(--text-dim); border-color: var(--border); }
+    .scope-pill-partial { color: var(--narrative); border-color: var(--narrative); }
+    .scope-toggle {
+      font-size: 0.68rem;
+      font-family: monospace;
+      letter-spacing: 0.05em;
+      padding: 0.18rem 0.6rem;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: all 0.15s;
+    }
+    .scope-toggle:hover  { border-color: var(--accent); color: var(--accent); }
+    .scope-toggle.tracked { color: var(--accent);   border-color: var(--accent); }
+    .scope-toggle.ignored { color: var(--text-dim); border-color: var(--border); }
+    .scope-actions {
+      margin-top: 2rem;
+      display: flex;
+      align-items: center;
+      gap: 0.7rem;
+    }
+    #scope-tree { margin-top: 0.5rem; }
   </style>
 </head>
 <body>
@@ -957,10 +1034,14 @@ function escHtml(str) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  ADMIN — SCOPE MANAGER (Steps 1 & 2)
+//  ADMIN — SCOPE MANAGER
 // ═══════════════════════════════════════════════════════════════════════════════
 
+const FOLDER_MIME = 'application/vnd.google-apps.folder';
+
 let adminSavedHTML = null;  // snapshot of content-inner before Admin opens
+let pendingScope   = {};    // fileId → 'tracked' | 'ignored' (in-memory changes)
+let savedScope     = {};    // last saved state from scope.json
 
 async function fetchDriveTree() {
   const data = await driveGet(
@@ -972,24 +1053,222 @@ async function fetchDriveTree() {
   return data.files || [];
 }
 
+// Nests flat file list into a tree keyed by parent ID
+function buildTree(files) {
+  const byId     = {};
+  const children = {};  // parentId → [file, ...]
+
+  for (const f of files) {
+    byId[f.id] = f;
+    const parentId = f.parents?.[0] || '__root__';
+    if (!children[parentId]) children[parentId] = [];
+    children[parentId].push(f);
+  }
+
+  // Sort each level: folders first, then alphabetically
+  for (const list of Object.values(children)) {
+    list.sort((a, b) => {
+      const af = a.mimeType === FOLDER_MIME;
+      const bf = b.mimeType === FOLDER_MIME;
+      if (af !== bf) return af ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+  }
+
+  return { byId, children, rootId: driveId };
+}
+
+// Returns 'tracked' | 'ignored' for a file, falling back to default
+function scopeState(fileId, defaultState = 'tracked') {
+  return pendingScope[fileId] ?? defaultState;
+}
+
+// Computes folder pill: 'all-tracked' | 'all-ignored' | 'partial'
+function folderPill(folderId, tree) {
+  const kids = tree.children[folderId] || [];
+  if (!kids.length) return 'all-tracked';
+  const states = kids.map(k => scopeState(k.id));
+  if (states.every(s => s === 'tracked'))  return 'all-tracked';
+  if (states.every(s => s === 'ignored'))  return 'all-ignored';
+  return 'partial';
+}
+
+// Cascades a state to all descendants of a folder
+function cascadeFolder(folderId, state, tree) {
+  for (const child of (tree.children[folderId] || [])) {
+    pendingScope[child.id] = state;
+    if (child.mimeType === FOLDER_MIME) cascadeFolder(child.id, state, tree);
+  }
+}
+
+// Renders one folder row + its children (recursive)
+function renderFolderRow(folder, tree, depth = 0) {
+  const kids    = tree.children[folder.id] || [];
+  const pill    = folderPill(folder.id, tree);
+  const pillCls = pill === 'all-tracked' ? 'scope-pill-tracked'
+                : pill === 'all-ignored' ? 'scope-pill-ignored'
+                : 'scope-pill-partial';
+  const pillLbl = pill === 'all-tracked' ? 'All tracked'
+                : pill === 'all-ignored' ? 'All ignored'
+                : 'Partial';
+  const indent  = depth * 1.2;
+
+  let html = `
+    <div class="scope-folder-row" style="padding-left:${indent}rem" data-folder-id="${folder.id}">
+      <button class="scope-chevron" onclick="toggleFolder('${folder.id}')">▼</button>
+      <span class="scope-name">📁 ${escHtml(folder.name)}</span>
+      <span class="scope-pill ${pillCls}">${pillLbl}</span>
+      <button class="scope-toggle" onclick="cascadeFolderUI('${folder.id}','tracked')">Track all</button>
+      <button class="scope-toggle" onclick="cascadeFolderUI('${folder.id}','ignored')">Ignore all</button>
+    </div>
+    <div class="scope-folder-children" id="fc-${folder.id}">`;
+
+  for (const child of kids) {
+    if (child.mimeType === FOLDER_MIME) {
+      html += renderFolderRow(child, tree, depth + 1);
+    } else {
+      html += renderFileRow(child, indent + 1.2);
+    }
+  }
+
+  html += `</div>`;
+  return html;
+}
+
+function renderFileRow(file, indentRem) {
+  const state   = scopeState(file.id);
+  const tracked = state === 'tracked';
+  return `
+    <div class="scope-file-row" data-file-id="${file.id}" style="padding-left:${indentRem}rem">
+      <span class="scope-name">${escHtml(file.name)}</span>
+      <button class="scope-toggle ${tracked ? 'tracked' : 'ignored'}"
+        onclick="toggleFile('${file.id}')">
+        ${tracked ? 'Tracked' : 'Ignored'}
+      </button>
+    </div>`;
+}
+
+function renderScopeManager(tree) {
+  const topFolders = (tree.children[tree.rootId] || [])
+    .filter(f => f.mimeType === FOLDER_MIME);
+  const topFiles   = (tree.children[tree.rootId] || [])
+    .filter(f => f.mimeType !== FOLDER_MIME);
+
+  const allFiles   = Object.values(tree.byId).filter(f => f.mimeType !== FOLDER_MIME);
+  const tracked    = allFiles.filter(f => scopeState(f.id) === 'tracked').length;
+  const ignored    = allFiles.filter(f => scopeState(f.id) === 'ignored').length;
+
+  let html = `
+    <div class="page-header">
+      <span class="page-badge">ADMIN</span>
+      <h1 class="page-title">Scope Manager</h1>
+    </div>
+    <button class="btn-cancel" onclick="closeAdmin()">← Back</button>
+    <div class="scope-summary">
+      ${tracked} tracked &nbsp;·&nbsp; ${ignored} ignored
+      <span id="unsaved-note" style="display:none;color:var(--accent);margin-left:1rem;">Unsaved changes</span>
+    </div>
+    <div id="scope-tree">`;
+
+  for (const folder of topFolders) html += renderFolderRow(folder, tree, 0);
+  for (const file   of topFiles)   html += renderFileRow(file, 0);
+
+  html += `</div>
+    <div class="scope-actions">
+      <button class="btn-save" onclick="saveScopeConfig()">Save scope</button>
+      <button class="btn-cancel" onclick="openAdmin()">Sync with Drive</button>
+    </div>`;
+
+  setContent(html);
+}
+
+// ── UI interactions ──────────────────────────────────────────────────────────
+
+function toggleFolder(folderId) {
+  const el = document.getElementById(`fc-${folderId}`);
+  const btn = el?.previousElementSibling?.querySelector('.scope-chevron');
+  if (!el) return;
+  const collapsed = el.style.display === 'none';
+  el.style.display = collapsed ? '' : 'none';
+  if (btn) btn.textContent = collapsed ? '▼' : '▶';
+}
+
+function cascadeFolderUI(folderId, state) {
+  cascadeFolder(folderId, state, window._scopeTree);
+  markUnsaved();
+  renderScopeManager(window._scopeTree);
+}
+
+function toggleFile(fileId) {
+  const current = scopeState(fileId);
+  pendingScope[fileId] = current === 'tracked' ? 'ignored' : 'tracked';
+  markUnsaved();
+  // Update just this row's button without full re-render
+  const row = document.querySelector(`[data-file-id="${fileId}"]`);
+  if (row) {
+    const btn = row.querySelector('.scope-toggle');
+    const tracked = pendingScope[fileId] === 'tracked';
+    btn.textContent = tracked ? 'Tracked' : 'Ignored';
+    btn.className   = `scope-toggle ${tracked ? 'tracked' : 'ignored'}`;
+  }
+  // Update parent folder pills
+  updateFolderPills();
+  updateSummary();
+}
+
+function updateFolderPills() {
+  document.querySelectorAll('.scope-folder-row').forEach(row => {
+    const folderId = row.dataset.folderId;
+    const pill     = folderPill(folderId, window._scopeTree);
+    const pillEl   = row.querySelector('.scope-pill');
+    if (!pillEl) return;
+    pillEl.className = `scope-pill ${pill === 'all-tracked' ? 'scope-pill-tracked' : pill === 'all-ignored' ? 'scope-pill-ignored' : 'scope-pill-partial'}`;
+    pillEl.textContent = pill === 'all-tracked' ? 'All tracked' : pill === 'all-ignored' ? 'All ignored' : 'Partial';
+  });
+}
+
+function updateSummary() {
+  const allFiles = Object.values(window._scopeTree.byId).filter(f => f.mimeType !== FOLDER_MIME);
+  const tracked  = allFiles.filter(f => scopeState(f.id) === 'tracked').length;
+  const ignored  = allFiles.filter(f => scopeState(f.id) === 'ignored').length;
+  const summary  = document.querySelector('.scope-summary');
+  if (summary) summary.firstChild.textContent = `${tracked} tracked · ${ignored} ignored`;
+}
+
+function markUnsaved() {
+  const note = document.getElementById('unsaved-note');
+  if (note) note.style.display = 'inline';
+}
+
+async function saveScopeConfig() {
+  const btn = document.querySelector('.scope-actions .btn-save');
+  if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
+  try {
+    const scopeJson = JSON.stringify({ version: 1, lastUpdated: new Date().toISOString(), scope: pendingScope }, null, 2);
+    const fileId    = await resolveFileId('scope.json').catch(() => null);
+    if (!fileId) throw new Error('scope.json not found in Drive — create it first by saving once via Drive directly.');
+    await drivePatch(fileId, scopeJson);
+    savedScope = { ...pendingScope };
+    const note = document.getElementById('unsaved-note');
+    if (note) note.style.display = 'none';
+    toast('Scope saved ✓');
+  } catch (e) {
+    showError(e.message);
+  } finally {
+    if (btn) { btn.textContent = 'Save scope'; btn.disabled = false; }
+  }
+}
+
 async function openAdmin() {
-  adminSavedHTML = document.getElementById('content-inner').innerHTML;
+  if (!adminSavedHTML) {
+    adminSavedHTML = document.getElementById('content-inner').innerHTML;
+  }
   showLoading('Loading Drive file list…');
   try {
-    const files = await fetchDriveTree();
-    console.log('Drive files:', files);
-    setContent(`
-      <div class="page-header">
-        <span class="page-badge">ADMIN</span>
-        <h1 class="page-title">Scope Manager</h1>
-      </div>
-      <div style="margin-bottom:1.5rem;">
-        <button class="btn-cancel" onclick="closeAdmin()">← Back</button>
-      </div>
-      <div class="state-msg" style="margin-top:1rem;text-align:left;">
-        Drive files loaded — ${files.length} files found. See console for details.
-      </div>
-    `);
+    const files      = await fetchDriveTree();
+    const tree       = buildTree(files);
+    window._scopeTree = tree;  // store for UI interactions
+    renderScopeManager(tree);
   } catch (e) {
     showError(e.message);
   }
@@ -997,6 +1276,7 @@ async function openAdmin() {
 
 function closeAdmin() {
   document.getElementById('content-inner').innerHTML = adminSavedHTML;
+  adminSavedHTML = null;
   applyView();
 }
 
