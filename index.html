@@ -1366,7 +1366,19 @@ async function openAdmin() {
   try {
     const files      = await fetchDriveTree();
     const tree       = buildTree(files);
-    window._scopeTree = tree;  // store for UI interactions
+    window._scopeTree = tree;
+
+    // Load saved scope preferences from Drive
+    const scopeFileId = await resolveFileId('scope.json').catch(() => null);
+    if (scopeFileId) {
+      try {
+        const raw  = await driveGetMedia(scopeFileId);
+        const data = JSON.parse(raw);
+        pendingScope = { ...(data.scope || {}) };
+        savedScope   = { ...pendingScope };
+      } catch (_) { /* scope.json unreadable — start fresh */ }
+    }
+
     renderScopeManager(tree);
   } catch (e) {
     showError(e.message);
