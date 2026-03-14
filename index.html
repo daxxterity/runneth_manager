@@ -1044,13 +1044,22 @@ let pendingScope   = {};    // fileId → 'tracked' | 'ignored' (in-memory chang
 let savedScope     = {};    // last saved state from scope.json
 
 async function fetchDriveTree() {
-  const data = await driveGet(
-    `files?corpora=drive&driveId=${driveId}` +
-    `&includeItemsFromAllDrives=true&supportsAllDrives=true` +
-    `&fields=files(id,name,mimeType,parents,modifiedTime)` +
-    `&pageSize=100`
-  );
-  return data.files || [];
+  let all = [], pageToken = '';
+  do {
+    const params = `files?corpora=drive&driveId=${driveId}` +
+      `&includeItemsFromAllDrives=true&supportsAllDrives=true` +
+      `&fields=nextPageToken,files(id,name,mimeType,parents,modifiedTime)` +
+      `&pageSize=200` +
+      (pageToken ? `&pageToken=${pageToken}` : '');
+    const data = await driveGet(params);
+    all = all.concat(data.files || []);
+    pageToken = data.nextPageToken || '';
+  } while (pageToken);
+  console.log('Total Drive items fetched:', all.length);
+  const rootFolderId = all.length ? (all.find(f => f.parents?.[0] && !all.some(g => g.id === f.parents[0]))?.parents?.[0] ?? driveId) : driveId;
+  console.log('Root folder ID:', rootFolderId, '(driveId:', driveId, ')');
+  console.log('Root-level items:', all.filter(f => f.parents?.[0] === rootFolderId));
+  return all;
 }
 
 // Nests flat file list into a tree keyed by parent ID
@@ -1075,10 +1084,9 @@ function buildTree(files) {
     });
   }
 
-  // The shared drive's root folder ID is the parent of top-level items.
-  // It may differ from driveId, so detect it: find any parentId not in byId.
-  const allParentIds = Object.keys(children);
-  const rootId = allParentIds.find(pid => !byId[pid]) || driveId;
+  // The Shared Drive's root folder ID differs from driveId.
+  // It's the parent key in `children` that has no entry in `byId`.
+  const rootId = Object.keys(children).find(id => !byId[id]) || driveId;
 
   return { byId, children, rootId };
 }
