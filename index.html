@@ -1200,6 +1200,16 @@ function renderScopeManager(tree) {
 
   const filterActive = scopeViewFilter === 'tracked';
 
+  const actionBar = `
+    <div class="scope-actions">
+      <button class="btn-save" onclick="saveScopeConfig()">Save scope</button>
+      <button class="btn-cancel" onclick="openAdmin()">Sync with Drive</button>
+      <span style="margin-left:auto;display:flex;gap:0.5rem;">
+        <button class="view-toggle" onclick="expandAllFolders()">Expand all</button>
+        <button class="view-toggle" onclick="collapseAllFolders()">Collapse all</button>
+      </span>
+    </div>`;
+
   let html = `
     <div class="page-header">
       <span class="page-badge">ADMIN</span>
@@ -1213,20 +1223,13 @@ function renderScopeManager(tree) {
       </button>
       <span id="unsaved-note" style="display:none;color:var(--accent);margin-left:1rem;">Unsaved changes</span>
     </div>
+    ${actionBar}
     <div id="scope-tree">`;
 
   for (const folder of topFolders) html += renderFolderRow(folder, tree, 0);
   for (const file   of topFiles)   html += renderFileRow(file, 0);
 
-  html += `</div>
-    <div class="scope-actions">
-      <button class="btn-save" onclick="saveScopeConfig()">Save scope</button>
-      <button class="btn-cancel" onclick="openAdmin()">Sync with Drive</button>
-      <span style="margin-left:auto;display:flex;gap:0.5rem;">
-        <button class="view-toggle" onclick="expandAllFolders()">Expand all</button>
-        <button class="view-toggle" onclick="collapseAllFolders()">Collapse all</button>
-      </span>
-    </div>`;
+  html += `</div>${actionBar}`;
 
   setContent(html);
 }
@@ -1242,11 +1245,32 @@ function toggleFolder(folderId) {
   if (btn) btn.textContent = collapsed ? '▼' : '▶';
 }
 
+// Saves which folder children divs are currently collapsed
+function captureCollapseState() {
+  const collapsed = new Set();
+  document.querySelectorAll('.scope-folder-children').forEach(el => {
+    if (el.style.display === 'none') collapsed.add(el.id.slice(3)); // strip 'fc-'
+  });
+  return collapsed;
+}
+
+// Reapplies a collapse state after a re-render
+function restoreCollapseState(collapsed) {
+  collapsed.forEach(id => {
+    const el  = document.getElementById(`fc-${id}`);
+    const btn = el?.previousElementSibling?.querySelector('.scope-chevron');
+    if (el)  el.style.display = 'none';
+    if (btn) btn.textContent  = '▶';
+  });
+}
+
 function cascadeFolderUI(folderId, state) {
+  const collapsed = captureCollapseState();
   pendingScope[folderId] = state;  // set the folder itself (handles empty folders)
   cascadeFolder(folderId, state, window._scopeTree);
   markUnsaved();
   renderScopeManager(window._scopeTree);
+  restoreCollapseState(collapsed);
 }
 
 function toggleFile(fileId) {
@@ -1286,8 +1310,10 @@ function updateSummary() {
 }
 
 function toggleScopeFilter() {
+  const collapsed = captureCollapseState();
   scopeViewFilter = scopeViewFilter === 'all' ? 'tracked' : 'all';
   renderScopeManager(window._scopeTree);
+  restoreCollapseState(collapsed);
 }
 
 function expandAllFolders() {
