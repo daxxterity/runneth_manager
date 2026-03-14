@@ -615,6 +615,27 @@ async function driveGetMedia(fileId) {
   return text;
 }
 
+async function driveCreate(filename, parentId, content) {
+  const metadata = JSON.stringify({ name: filename, parents: [parentId] });
+  const boundary = 'drive_create_boundary';
+  const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${content}\r\n--${boundary}--`;
+  const makeRequest = () => fetch(
+    `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': `multipart/related; boundary=${boundary}`,
+      },
+      body,
+    }
+  );
+  let resp = await makeRequest();
+  if (resp.status === 401) { await refreshToken(); resp = await makeRequest(); }
+  if (!resp.ok) throw new Error(`Create failed (${resp.status}): ${await resp.text()}`);
+  return resp.json();  // returns { id, name, ... }
+}
+
 async function drivePatch(fileId, content) {
   const makeRequest = () => fetch(
     `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&supportsAllDrives=true`,
@@ -1201,6 +1222,10 @@ function renderScopeManager(tree) {
     <div class="scope-actions">
       <button class="btn-save" onclick="saveScopeConfig()">Save scope</button>
       <button class="btn-cancel" onclick="openAdmin()">Sync with Drive</button>
+      <span style="margin-left:auto;display:flex;gap:0.5rem;">
+        <button class="view-toggle" onclick="expandAllFolders()">Expand all</button>
+        <button class="view-toggle" onclick="collapseAllFolders()">Collapse all</button>
+      </span>
     </div>`;
 
   setContent(html);
@@ -1265,6 +1290,16 @@ function toggleScopeFilter() {
   renderScopeManager(window._scopeTree);
 }
 
+function expandAllFolders() {
+  document.querySelectorAll('.scope-folder-children').forEach(el => el.style.display = '');
+  document.querySelectorAll('.scope-chevron').forEach(btn => btn.textContent = '▼');
+}
+
+function collapseAllFolders() {
+  document.querySelectorAll('.scope-folder-children').forEach(el => el.style.display = 'none');
+  document.querySelectorAll('.scope-chevron').forEach(btn => btn.textContent = '▶');
+}
+
 function markUnsaved() {
   const note = document.getElementById('unsaved-note');
   if (note) note.style.display = 'inline';
@@ -1275,9 +1310,17 @@ async function saveScopeConfig() {
   if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
   try {
     const scopeJson = JSON.stringify({ version: 1, lastUpdated: new Date().toISOString(), scope: pendingScope }, null, 2);
-    const fileId    = await resolveFileId('scope.json').catch(() => null);
-    if (!fileId) throw new Error('scope.json not found in Drive — create it first by saving once via Drive directly.');
-    await drivePatch(fileId, scopeJson);
+    let fileId = await resolveFileId('scope.json').catch(() => null);
+    if (!fileId) {
+      // First save — create scope.json in the Shared Drive root folder
+      const rootId = window._scopeTree?.rootId;
+      if (!rootId) throw new Error('Drive tree not loaded — open Admin first.');
+      const created = await driveCreate('scope.json', rootId, scopeJson);
+      fileId = created.id;
+      fileIdCache['scope.json'] = fileId;  // warm the cache
+    } else {
+      await drivePatch(fileId, scopeJson);
+    }
     savedScope = { ...pendingScope };
     const note = document.getElementById('unsaved-note');
     if (note) note.style.display = 'none';
