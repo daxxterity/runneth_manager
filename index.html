@@ -1075,7 +1075,12 @@ function buildTree(files) {
     });
   }
 
-  return { byId, children, rootId: driveId };
+  // The shared drive's root folder ID is the parent of top-level items.
+  // It may differ from driveId, so detect it: find any parentId not in byId.
+  const allParentIds = Object.keys(children);
+  const rootId = allParentIds.find(pid => !byId[pid]) || driveId;
+
+  return { byId, children, rootId };
 }
 
 // Returns 'tracked' | 'ignored' for a file, falling back to default
