@@ -446,7 +446,7 @@
 //  5. Copy the Client ID and paste it below
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const CLIENT_ID          = 'YOUR_OAUTH_CLIENT_ID.apps.googleusercontent.com';
+const CLIENT_ID          = '41079217394-urci9a9quptu28vdfub0i0dlgcs5spng.apps.googleusercontent.com';
 const SHARED_DRIVE_NAME  = 'Runneth';
 const INDEX_FILENAME     = '_index.json';
 const DRIVE_SCOPE        = 'https://www.googleapis.com/auth/drive';
@@ -471,23 +471,44 @@ let editSavedHTML   = null;   // snapshot before entering edit mode
 // ═══════════════════════════════════════════════════════════════════════════════
 
 let tokenClient;
+let tokenRefreshResolve = null;  // set when a silent refresh is pending
 
 function initAuth() {
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: DRIVE_SCOPE,
     callback: async (resp) => {
-      if (resp.error) { showError('Sign-in failed: ' + resp.error); return; }
+      if (resp.error) {
+        if (!tokenRefreshResolve) alert('Sign-in error: ' + resp.error);
+        tokenRefreshResolve = null;
+        return;
+      }
       accessToken = resp.access_token;
-      document.getElementById('login-screen').hidden = true;
-      document.getElementById('app').hidden = false;
+      // If this was a background refresh, resolve the waiting promise
+      if (tokenRefreshResolve) {
+        const resolve = tokenRefreshResolve;
+        tokenRefreshResolve = null;
+        resolve();
+        return;
+      }
+      // Otherwise this is the initial login
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('app').style.display = 'flex';
       await startApp();
     },
   });
 }
 
 function login() {
-  tokenClient.requestAccessToken();
+  tokenClient.requestAccessToken({ prompt: 'consent' });
+}
+
+// Silently refreshes the access token — resolves when new token is ready
+function refreshToken() {
+  return new Promise(resolve => {
+    tokenRefreshResolve = resolve;
+    tokenClient.requestAccessToken({ prompt: '' });
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -495,20 +516,21 @@ function login() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 async function driveGet(path) {
-  const resp = await fetch(`https://www.googleapis.com/drive/v3/${path}`, {
+  let resp = await fetch(`https://www.googleapis.com/drive/v3/${path}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  if (resp.status === 401) { login(); return null; }
+  if (resp.status === 401) { await refreshToken(); return driveGet(path); }
   if (!resp.ok) throw new Error(`Drive API ${resp.status}: ${await resp.text()}`);
   return resp.json();
 }
 
 async function driveGetMedia(fileId) {
   if (contentCache[fileId]) return contentCache[fileId];
-  const resp = await fetch(
+  let resp = await fetch(
     `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
+  if (resp.status === 401) { await refreshToken(); return driveGetMedia(fileId); }
   if (!resp.ok) throw new Error(`Could not read file (${resp.status})`);
   const text = await resp.text();
   contentCache[fileId] = text;
@@ -516,7 +538,7 @@ async function driveGetMedia(fileId) {
 }
 
 async function drivePatch(fileId, content) {
-  const resp = await fetch(
+  const makeRequest = () => fetch(
     `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&supportsAllDrives=true`,
     {
       method: 'PATCH',
@@ -527,6 +549,8 @@ async function drivePatch(fileId, content) {
       body: content,
     }
   );
+  let resp = await makeRequest();
+  if (resp.status === 401) { await refreshToken(); resp = await makeRequest(); }
   if (!resp.ok) throw new Error(`Save failed (${resp.status})`);
   contentCache[fileId] = content;  // update cache
 }
