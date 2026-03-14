@@ -1042,6 +1042,7 @@ const FOLDER_MIME = 'application/vnd.google-apps.folder';
 let adminSavedHTML = null;  // snapshot of content-inner before Admin opens
 let pendingScope   = {};    // fileId → 'tracked' | 'ignored' (in-memory changes)
 let savedScope     = {};    // last saved state from scope.json
+let scopeViewFilter = 'all'; // 'all' | 'tracked' — controls what the tree shows
 
 async function fetchDriveTree() {
   let all = [], pageToken = '';
@@ -1099,7 +1100,10 @@ function scopeState(fileId, defaultState = 'tracked') {
 // Computes folder pill: 'all-tracked' | 'all-ignored' | 'partial'
 function folderPill(folderId, tree) {
   const kids = tree.children[folderId] || [];
-  if (!kids.length) return 'all-tracked';
+  if (!kids.length) {
+    // Empty folder: use its own explicit state (defaults to tracked)
+    return pendingScope[folderId] === 'ignored' ? 'all-ignored' : 'all-tracked';
+  }
   const states = kids.map(k => scopeState(k.id));
   if (states.every(s => s === 'tracked'))  return 'all-tracked';
   if (states.every(s => s === 'ignored'))  return 'all-ignored';
@@ -1118,6 +1122,7 @@ function cascadeFolder(folderId, state, tree) {
 function renderFolderRow(folder, tree, depth = 0) {
   const kids    = tree.children[folder.id] || [];
   const pill    = folderPill(folder.id, tree);
+  if (scopeViewFilter === 'tracked' && pill === 'all-ignored') return '';
   const pillCls = pill === 'all-tracked' ? 'scope-pill-tracked'
                 : pill === 'all-ignored' ? 'scope-pill-ignored'
                 : 'scope-pill-partial';
@@ -1150,6 +1155,7 @@ function renderFolderRow(folder, tree, depth = 0) {
 
 function renderFileRow(file, indentRem) {
   const state   = scopeState(file.id);
+  if (scopeViewFilter === 'tracked' && state === 'ignored') return '';
   const tracked = state === 'tracked';
   return `
     <div class="scope-file-row" data-file-id="${file.id}" style="padding-left:${indentRem}rem">
@@ -1171,6 +1177,8 @@ function renderScopeManager(tree) {
   const tracked    = allFiles.filter(f => scopeState(f.id) === 'tracked').length;
   const ignored    = allFiles.filter(f => scopeState(f.id) === 'ignored').length;
 
+  const filterActive = scopeViewFilter === 'tracked';
+
   let html = `
     <div class="page-header">
       <span class="page-badge">ADMIN</span>
@@ -1178,7 +1186,10 @@ function renderScopeManager(tree) {
     </div>
     <button class="btn-cancel" onclick="closeAdmin()">← Back</button>
     <div class="scope-summary">
-      ${tracked} tracked &nbsp;·&nbsp; ${ignored} ignored
+      <span id="scope-counts">${tracked} tracked &nbsp;·&nbsp; ${ignored} ignored</span>
+      <button class="view-toggle ${filterActive ? 'active' : ''}" onclick="toggleScopeFilter()" style="margin-left:1rem;font-size:0.72rem;">
+        ${filterActive ? 'Show all' : 'Hide ignored'}
+      </button>
       <span id="unsaved-note" style="display:none;color:var(--accent);margin-left:1rem;">Unsaved changes</span>
     </div>
     <div id="scope-tree">`;
@@ -1207,6 +1218,7 @@ function toggleFolder(folderId) {
 }
 
 function cascadeFolderUI(folderId, state) {
+  pendingScope[folderId] = state;  // set the folder itself (handles empty folders)
   cascadeFolder(folderId, state, window._scopeTree);
   markUnsaved();
   renderScopeManager(window._scopeTree);
@@ -1244,8 +1256,13 @@ function updateSummary() {
   const allFiles = Object.values(window._scopeTree.byId).filter(f => f.mimeType !== FOLDER_MIME);
   const tracked  = allFiles.filter(f => scopeState(f.id) === 'tracked').length;
   const ignored  = allFiles.filter(f => scopeState(f.id) === 'ignored').length;
-  const summary  = document.querySelector('.scope-summary');
-  if (summary) summary.firstChild.textContent = `${tracked} tracked · ${ignored} ignored`;
+  const el = document.getElementById('scope-counts');
+  if (el) el.textContent = `${tracked} tracked · ${ignored} ignored`;
+}
+
+function toggleScopeFilter() {
+  scopeViewFilter = scopeViewFilter === 'all' ? 'tracked' : 'all';
+  renderScopeManager(window._scopeTree);
 }
 
 function markUnsaved() {
