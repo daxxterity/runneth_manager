@@ -13,4 +13,4 @@ jobs:
             username: ${{ secrets.FTP_USERNAME }}
             password: ${{ secrets.FTP_PASSWORD }}
             local-dir: ./
-            server-dir: /public_html/runneth-km.marcoantonio.org/
+            server-dir: /
