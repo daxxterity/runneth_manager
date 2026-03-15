@@ -712,25 +712,19 @@ function renderSidebar() {
     </button>`;
   }
 
-  html += `<div class="nav-group">CHARACTERS</div>`;
-  for (const c of manifest.entities.characters) {
-    html += `<button class="nav-item" data-id="${c.id}" data-type="entity">
-      <span class="nav-icon">C</span><span>${c.name}</span>
-    </button>`;
-  }
-
-  html += `<div class="nav-group">ARTEFACTS</div>`;
-  for (const a of manifest.entities.artefacts) {
-    html += `<button class="nav-item" data-id="${a.id}" data-type="entity">
-      <span class="nav-icon">A</span><span>${a.name}</span>
-    </button>`;
-  }
-
-  html += `<div class="nav-group">LOCATIONS</div>`;
-  for (const l of manifest.entities.locations) {
-    html += `<button class="nav-item" data-id="${l.id}" data-type="entity">
-      <span class="nav-icon">L</span><span>${l.name}</span>
-    </button>`;
+  const GROUP_ICONS = {
+    'characters': 'C', 'artefacts': 'A', 'locations': 'L',
+    'planning': '·', 'game mechanics': '⚙', 'bestiary': 'B',
+    'items': 'I', 'reference': 'R'
+  };
+  for (const [groupKey, items] of Object.entries(manifest.entities)) {
+    const icon = GROUP_ICONS[groupKey.toLowerCase()] || groupKey[0].toUpperCase();
+    html += `<div class="nav-group">${groupKey.toUpperCase()}</div>`;
+    for (const item of items) {
+      html += `<button class="nav-item" data-id="${item.id}" data-type="entity">
+        <span class="nav-icon">${icon}</span><span>${item.name}</span>
+      </button>`;
+    }
   }
 
   nav.innerHTML = html;
