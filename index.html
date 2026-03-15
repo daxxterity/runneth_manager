@@ -131,12 +131,33 @@
     #sidebar::-webkit-scrollbar-thumb { background: var(--border); }
 
     .nav-group {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      width: 100%;
+      background: var(--surface2);
+      border: none;
+      border-top: 1px solid var(--border);
+      color: var(--text-bright);
       font-size: 0.63rem;
       letter-spacing: 0.22em;
-      color: var(--text-dim);
-      padding: 1.2rem 1rem 0.35rem;
+      padding: 0.55rem 1rem;
       font-family: monospace;
+      cursor: pointer;
+      text-align: left;
+      margin-top: 0.5rem;
+      user-select: none;
     }
+    .nav-group:first-child { margin-top: 0; }
+    .nav-group:hover { background: var(--border); }
+    .nav-chevron {
+      font-size: 0.5rem;
+      display: inline-block;
+      transition: transform 0.15s;
+      flex-shrink: 0;
+    }
+    .nav-group.collapsed .nav-chevron { transform: rotate(-90deg); }
+    .nav-group-items.collapsed { display: none; }
     .nav-item {
       display: flex;
       align-items: flex-start;
@@ -699,37 +720,46 @@ async function startApp() {
 //  SIDEBAR
 // ═══════════════════════════════════════════════════════════════════════════════
 
+function toggleNavGroup(btn) {
+  btn.classList.toggle('collapsed');
+  btn.nextElementSibling?.classList.toggle('collapsed');
+}
+
 function renderSidebar() {
   const nav = document.getElementById('sidebar');
   const ICONS = { intro: '◆', tutorial: 'T', level: 'L' };
   let html = '';
 
-  html += `<div class="nav-group">STORY</div>`;
+  html += `<button class="nav-group" onclick="toggleNavGroup(this)"><span class="nav-chevron">▼</span>STORY</button>`;
+  html += `<div class="nav-group-items">`;
   for (const beat of manifest.beats) {
     html += `<button class="nav-item" data-id="${beat.id}" data-type="beat">
       <span class="nav-icon">${ICONS[beat.type] || '·'}</span>
       <span>${beat.title}</span>
     </button>`;
   }
+  html += `</div>`;
 
   const GROUP_ICONS = {
     'characters': 'C', 'artefacts': 'A', 'locations': 'L',
     'planning': '·', 'game mechanics': '⚙', 'bestiary': 'B',
-    'items': 'I', 'reference': 'R'
+    'items': 'I', 'reference': 'R', 'exit keys': 'K'
   };
   for (const [groupKey, items] of Object.entries(manifest.entities)) {
     const icon = GROUP_ICONS[groupKey.toLowerCase()] || groupKey[0].toUpperCase();
-    html += `<div class="nav-group">${groupKey.toUpperCase()}</div>`;
+    html += `<button class="nav-group" onclick="toggleNavGroup(this)"><span class="nav-chevron">▼</span>${groupKey.toUpperCase()}</button>`;
+    html += `<div class="nav-group-items">`;
     for (const item of items) {
       html += `<button class="nav-item" data-id="${item.id}" data-type="entity">
         <span class="nav-icon">${icon}</span><span>${item.name}</span>
       </button>`;
     }
+    html += `</div>`;
   }
 
   nav.innerHTML = html;
 
-  // Single delegated click handler — no inline onclick needed
+  // Single delegated click handler for nav items (nav-group toggles handled by inline onclick)
   nav.addEventListener('click', e => {
     const btn = e.target.closest('.nav-item');
     if (!btn) return;
@@ -829,7 +859,7 @@ function renderBeat(meta, raw, fileId) {
   let html = `
     <div class="page-header">
       <span class="page-badge">${(fm.type || meta.type || '').toUpperCase()}</span>
-      <h1 class="page-title">${fm.title || meta.title}</h1>
+      <h1 class="page-title" title="${meta.path}">${fm.title || meta.title}</h1>
     </div>`;
 
   // Entity + artefact chips
@@ -871,7 +901,7 @@ function renderEntity(meta, raw, fileId) {
   let html = `
     <div class="page-header">
       <span class="page-badge">${(fm.type || fm.role || '').toUpperCase()}</span>
-      <h1 class="page-title">${fm.name || meta.name}</h1>
+      <h1 class="page-title" title="${meta.path}">${fm.name || meta.name}</h1>
     </div>`;
 
   if (fm.appears_in?.length) {
