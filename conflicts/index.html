@@ -738,23 +738,34 @@ async function loadTrackedFiles() {
     }
   }
 
-  // Filter: .md files that are not explicitly ignored
+  // Filter: plain .md files only — exclude all Google native formats and ignored files
   const mdFiles = allFiles.filter(f =>
     f.name.endsWith('.md') &&
-    f.mimeType !== 'application/vnd.google-apps.folder' &&
+    !f.mimeType.startsWith('application/vnd.google-apps.') &&
     scopeMap[f.id] !== 'ignored'
   );
 
   // Build filename → ID map and fetch content
+  // Skip files that return 403/errors rather than crashing the whole scan
   fileNameToId  = {};
   fileIdContent = {};
   const result  = [];
+  const skipped = [];
 
   for (const file of mdFiles) {
-    fileNameToId[file.name]  = file.id;
-    const content            = await driveGetMedia(file.id);
-    fileIdContent[file.id]   = content;
-    result.push({ name: file.name, content, id: file.id });
+    fileNameToId[file.name] = file.id;
+    try {
+      const content          = await driveGetMedia(file.id);
+      fileIdContent[file.id] = content;
+      result.push({ name: file.name, content, id: file.id });
+    } catch (e) {
+      console.warn(`Skipped ${file.name} (${e.message})`);
+      skipped.push(file.name);
+    }
+  }
+
+  if (skipped.length > 0) {
+    console.warn(`${skipped.length} file(s) could not be read and were skipped:`, skipped);
   }
 
   return result;
