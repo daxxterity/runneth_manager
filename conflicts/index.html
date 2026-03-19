@@ -1,0 +1,1331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Runneth — Conflict Resolver</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:           #F7F5F0;
+    --surface:      #FFFFFF;
+    --surface-2:    #F0EDE6;
+    --border:       rgba(0,0,0,0.10);
+    --border-strong:rgba(0,0,0,0.18);
+    --text:         #1A1916;
+    --text-muted:   #6B6860;
+    --text-faint:   #9B9890;
+    --accent:       #2A4D3A;
+    --accent-light: #E8F0EB;
+    --accent-text:  #2A4D3A;
+    --warn:         #7A3F1A;
+    --warn-bg:      #FDF0E8;
+    --warn-border:  rgba(122,63,26,0.20);
+    --left-tint:    #EAF0FE;
+    --left-border:  #4A72CC;
+    --right-tint:   #F5EAF5;
+    --right-border: #8A4AAA;
+    --tag-bg:       #E8EAF0;
+    --tag-text:     #3A3D52;
+    --progress-bg:  #D8D4CC;
+    --radius:       10px;
+    --font-display: 'DM Serif Display', Georgia, serif;
+    --font-body:    'Instrument Sans', system-ui, sans-serif;
+    --font-mono:    'DM Mono', monospace;
+  }
+
+  body {
+    font-family: var(--font-body);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Login ── */
+  #login-screen {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    background: var(--bg);
+  }
+  .login-card {
+    text-align: center;
+    padding: 3rem 2.5rem;
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    border-radius: var(--radius);
+    width: min(340px, 90vw);
+  }
+  .login-glyph { font-size: 2rem; color: var(--accent); margin-bottom: 1rem; }
+  .login-card h1 {
+    font-family: var(--font-display);
+    font-size: 1.6rem;
+    color: var(--text);
+    margin-bottom: 0.2rem;
+  }
+  .login-card p { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 2rem; letter-spacing: 0.08em; }
+  .login-btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 0.75rem 2rem;
+    font-size: 0.9rem;
+    font-family: var(--font-body);
+    font-weight: 600;
+    cursor: pointer;
+    width: 100%;
+    border-radius: var(--radius);
+    transition: opacity 0.2s;
+  }
+  .login-btn:hover { opacity: 0.85; }
+  .login-note { font-size: 0.72rem; color: var(--text-faint); margin-top: 1rem; }
+
+  .api-key-section { margin-top: 1.5rem; border-top: 0.5px solid var(--border); padding-top: 1.5rem; text-align: left; }
+  .api-key-section label { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 0.4rem; letter-spacing: 0.05em; }
+  .api-key-row { display: flex; gap: 0.5rem; }
+  .api-key-input {
+    flex: 1; border: 1px solid var(--border-strong); border-radius: 6px;
+    padding: 0.5rem 0.75rem; font-size: 0.8rem; font-family: var(--font-mono);
+    color: var(--text); background: var(--bg); outline: none;
+    transition: border-color 0.15s;
+  }
+  .api-key-input:focus { border-color: var(--accent); }
+  .api-key-save {
+    background: var(--surface-2); border: 1px solid var(--border-strong);
+    color: var(--text-muted); padding: 0.5rem 0.9rem; border-radius: 6px;
+    font-size: 0.78rem; font-family: var(--font-body); cursor: pointer;
+    transition: all 0.15s; white-space: nowrap;
+  }
+  .api-key-save:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .api-key-status { font-size: 0.72rem; margin-top: 0.4rem; min-height: 1rem; }
+  .api-key-status.ok  { color: var(--accent); }
+  .api-key-status.err { color: var(--warn); }
+
+  /* ── App shell ── */
+  #app { display: flex; flex-direction: column; min-height: 100vh; }
+
+  /* ── Header ── */
+  header {
+    border-bottom: 0.5px solid var(--border-strong);
+    background: var(--surface);
+    padding: 0 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 60px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .logo { font-family: var(--font-display); font-size: 20px; letter-spacing: -0.02em; }
+  .logo span { color: var(--accent); }
+  .header-right { display: flex; align-items: center; gap: 16px; }
+  .badge-count {
+    background: var(--warn-bg);
+    border: 0.5px solid var(--warn-border);
+    color: var(--warn);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-family: var(--font-mono);
+  }
+  .btn-scan {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 8px 18px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    font-weight: 500;
+    font-family: var(--font-body);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: opacity 0.15s;
+  }
+  .btn-scan:hover { opacity: 0.85; }
+  .btn-scan:disabled { opacity: 0.5; cursor: not-allowed; }
+  .scan-dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.7); animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:0.4} 50%{opacity:1} }
+
+  /* ── Progress bar ── */
+  .progress-bar-wrap {
+    background: var(--surface);
+    border-bottom: 0.5px solid var(--border);
+    padding: 12px 2rem;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .progress-label { font-size: 12px; color: var(--text-muted); white-space: nowrap; font-family: var(--font-mono); }
+  .progress-track { flex: 1; height: 4px; background: var(--progress-bg); border-radius: 2px; overflow: hidden; }
+  .progress-fill  { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.4s ease; }
+  .progress-skipped { font-size: 12px; color: var(--text-faint); font-family: var(--font-mono); white-space: nowrap; }
+
+  /* ── Main layout ── */
+  main { flex: 1; padding: 2rem; max-width: 1200px; margin: 0 auto; width: 100%; }
+
+  /* ── Conflict card ── */
+  .conflict-meta { display: flex; align-items: center; gap: 10px; margin-bottom: 1rem; }
+  .conflict-tag  {
+    background: var(--tag-bg); color: var(--tag-text);
+    font-size: 11px; font-weight: 500; font-family: var(--font-mono);
+    padding: 3px 9px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .conflict-id      { font-size: 12px; color: var(--text-faint); font-family: var(--font-mono); }
+  .conflict-title   { font-family: var(--font-display); font-size: 26px; letter-spacing: -0.02em; margin-bottom: 0.4rem; line-height: 1.2; }
+  .conflict-subtitle{ font-size: 14px; color: var(--text-muted); margin-bottom: 1.5rem; }
+
+  /* ── Two-panel comparison ── */
+  .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.25rem; }
+  .panel {
+    background: var(--surface); border-radius: var(--radius); border: 0.5px solid var(--border);
+    overflow: hidden; transition: border-color 0.2s, box-shadow 0.2s; cursor: pointer; position: relative;
+  }
+  .panel.selected-left  { border-color: var(--left-border);  box-shadow: 0 0 0 2px rgba(74,114,204,0.18); }
+  .panel.selected-right { border-color: var(--right-border); box-shadow: 0 0 0 2px rgba(138,74,170,0.18); }
+  .panel-header {
+    padding: 10px 14px; border-bottom: 0.5px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .panel-left  .panel-header { background: var(--left-tint); }
+  .panel-right .panel-header { background: var(--right-tint); }
+  .panel-file  { font-size: 12px; font-family: var(--font-mono); font-weight: 500; display: flex; align-items: center; gap: 6px; }
+  .panel-left  .panel-file { color: var(--left-border); }
+  .panel-right .panel-file { color: var(--right-border); }
+  .file-dot { width: 7px; height: 7px; border-radius: 50%; }
+  .panel-left  .file-dot { background: var(--left-border); }
+  .panel-right .file-dot { background: var(--right-border); }
+  .panel-line { font-size: 11px; color: var(--text-faint); font-family: var(--font-mono); }
+  .panel-body { padding: 16px; font-size: 14px; line-height: 1.7; color: var(--text); min-height: 140px; }
+  .panel-body mark { background: rgba(255,210,100,0.35); border-radius: 3px; padding: 0 2px; }
+  .panel-check {
+    position: absolute; bottom: 12px; right: 12px;
+    width: 22px; height: 22px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; transition: opacity 0.2s; font-size: 11px; color: #fff; font-weight: 600;
+  }
+  .panel.selected-left  .panel-check { opacity: 1; background: var(--left-border); }
+  .panel.selected-right .panel-check { opacity: 1; background: var(--right-border); }
+
+  /* ── AI suggestion ── */
+  .suggestion-box {
+    background: var(--accent-light); border: 0.5px solid rgba(42,77,58,0.20);
+    border-radius: var(--radius); padding: 14px 16px; margin-bottom: 1.25rem;
+    display: flex; gap: 12px; align-items: flex-start;
+  }
+  .suggestion-icon { font-size: 15px; flex-shrink: 0; margin-top: 1px; }
+  .suggestion-text { font-size: 13.5px; color: var(--accent-text); line-height: 1.6; }
+  .suggestion-text strong { font-weight: 600; }
+
+  /* ── Actions ── */
+  .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .btn {
+    padding: 10px 20px; border-radius: var(--radius);
+    font-size: 13.5px; font-family: var(--font-body); font-weight: 500;
+    cursor: pointer; transition: all 0.15s; border: 0.5px solid transparent;
+  }
+  .btn-left  { background: var(--left-tint);  border-color: rgba(74,114,204,0.35); color: var(--left-border); }
+  .btn-left:hover  { background: rgba(74,114,204,0.12); }
+  .btn-right { background: var(--right-tint); border-color: rgba(138,74,170,0.35); color: var(--right-border); }
+  .btn-right:hover { background: rgba(138,74,170,0.12); }
+  .btn-custom { background: var(--surface-2); border-color: var(--border-strong); color: var(--text-muted); }
+  .btn-custom:hover { background: var(--surface); color: var(--text); }
+  .btn-skip   { background: transparent; border-color: transparent; color: var(--text-faint); margin-left: auto; font-size: 13px; }
+  .btn-skip:hover { color: var(--text-muted); }
+  .btn-confirm {
+    background: var(--accent); color: #fff; border-color: transparent;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s;
+  }
+  .btn-confirm.active { opacity: 1; pointer-events: all; }
+  .btn-confirm:hover  { opacity: 0.85; }
+  .btn-confirm:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+
+  /* ── Custom write panel ── */
+  .custom-panel {
+    background: var(--surface); border: 0.5px solid var(--border-strong);
+    border-radius: var(--radius); padding: 14px; margin-bottom: 1rem; display: none;
+  }
+  .custom-panel.open { display: block; }
+  .custom-panel textarea {
+    width: 100%; border: 0.5px solid var(--border); border-radius: 6px;
+    padding: 10px 12px; font-size: 13.5px; font-family: var(--font-body);
+    color: var(--text); background: var(--bg); resize: vertical; min-height: 80px; outline: none;
+    transition: border-color 0.15s;
+  }
+  .custom-panel textarea:focus { border-color: var(--accent); }
+  .custom-panel label { font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 6px; font-weight: 500; }
+
+  /* ── Empty / all-done state ── */
+  .empty-state { text-align: center; padding: 4rem 2rem; display: none; }
+  .empty-state.visible { display: block; }
+  .empty-icon  { font-size: 40px; margin-bottom: 1rem; }
+  .empty-title { font-family: var(--font-display); font-size: 22px; margin-bottom: 0.5rem; }
+  .empty-sub   { font-size: 14px; color: var(--text-muted); max-width: 320px; margin: 0 auto; }
+
+  .conflict-view { display: block; }
+  .conflict-view.hidden { display: none; }
+
+  /* ── Review screen ── */
+  #review-view { display: none; }
+  #review-view.visible { display: block; }
+
+  .review-header { margin-bottom: 2rem; }
+  .review-header .conflict-title { margin-bottom: 0.4rem; }
+  .review-header .conflict-subtitle { color: var(--text-muted); font-size: 14px; }
+
+  .review-section-label {
+    font-size: 11px; font-family: var(--font-mono); letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--text-faint); margin-bottom: 0.75rem; margin-top: 2rem;
+  }
+
+  .change-entry {
+    background: var(--surface); border: 0.5px solid var(--border);
+    border-radius: var(--radius); padding: 16px; margin-bottom: 0.75rem;
+  }
+  .change-entry-header {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+  }
+  .change-filename  { font-family: var(--font-mono); font-size: 13px; font-weight: 500; color: var(--accent-text); }
+  .change-conflict-ref { font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); }
+  .change-status {
+    margin-left: auto; font-family: var(--font-mono); font-size: 12px;
+    padding: 2px 8px; border-radius: 20px;
+  }
+  .change-status.pending  { color: var(--text-faint); background: var(--surface-2); }
+  .change-status.success  { color: #2A4D3A; background: var(--accent-light); }
+  .change-status.error    { color: var(--warn); background: var(--warn-bg); }
+  .change-status.manual   { color: #5a4a1a; background: #fdf6e3; }
+
+  .change-body { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: start; }
+  .change-side label { font-size: 10px; font-family: var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); display: block; margin-bottom: 4px; }
+  .change-excerpt {
+    background: var(--surface-2); border-radius: 6px; padding: 10px 12px;
+    font-size: 13px; line-height: 1.6; color: var(--text-muted);
+    border: 0.5px solid var(--border);
+  }
+  .change-excerpt.new-text { color: var(--text); border-color: rgba(42,77,58,0.3); background: var(--accent-light); }
+  .change-excerpt.removed  { text-decoration: line-through; opacity: 0.6; }
+  .change-arrow { font-size: 18px; color: var(--text-faint); padding-top: 20px; }
+
+  .skipped-entry {
+    background: var(--surface-2); border-radius: var(--radius); padding: 12px 16px;
+    font-size: 13px; color: var(--text-muted); margin-bottom: 0.5rem;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .skipped-label { font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); }
+
+  .manual-note {
+    background: #fdf6e3; border: 0.5px solid rgba(122,100,20,0.25);
+    border-radius: var(--radius); padding: 12px 14px; font-size: 13px;
+    color: #5a4a1a; margin-bottom: 0.75rem;
+  }
+
+  .review-actions { margin-top: 2rem; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .btn-commit {
+    background: var(--accent); color: #fff; border: none;
+    padding: 11px 24px; border-radius: var(--radius);
+    font-size: 14px; font-weight: 600; font-family: var(--font-body);
+    cursor: pointer; transition: opacity 0.15s;
+  }
+  .btn-commit:hover    { opacity: 0.85; }
+  .btn-commit:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-back {
+    background: var(--surface-2); color: var(--text-muted);
+    border: 0.5px solid var(--border-strong); padding: 11px 20px;
+    border-radius: var(--radius); font-size: 13.5px; font-family: var(--font-body);
+    cursor: pointer; transition: all 0.15s;
+  }
+  .btn-back:hover { background: var(--surface); color: var(--text); }
+
+  /* ── Toast ── */
+  .toast {
+    position: fixed; bottom: 2rem; right: 2rem;
+    background: var(--text); color: var(--bg);
+    padding: 12px 20px; border-radius: var(--radius);
+    font-size: 13.5px; font-weight: 500;
+    transform: translateY(80px); opacity: 0;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); z-index: 999;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+
+  @media (max-width: 700px) {
+    .panels       { grid-template-columns: 1fr; }
+    .change-body  { grid-template-columns: 1fr; }
+    .change-arrow { display: none; }
+    header        { padding: 0 1rem; }
+    main          { padding: 1rem; }
+    .progress-bar-wrap { padding: 10px 1rem; }
+    .actions      { gap: 8px; }
+    .btn          { padding: 9px 14px; font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── LOGIN SCREEN ──────────────────────────────────────────────────────────── -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-glyph">◆</div>
+    <h1>Runneth</h1>
+    <p>CONFLICT RESOLVER</p>
+    <button class="login-btn" id="login-btn" onclick="login()">Sign in with Google</button>
+    <p class="login-note">Use the same Google account as the Game Bible.</p>
+
+    <div class="api-key-section">
+      <label>ANTHROPIC API KEY</label>
+      <div class="api-key-row">
+        <input class="api-key-input" id="api-key-input" type="password"
+          placeholder="sk-ant-..." autocomplete="off"
+          value="" oninput="onApiKeyInput()"/>
+        <button class="api-key-save" onclick="saveApiKey()">Save</button>
+      </div>
+      <div class="api-key-status" id="api-key-status"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── APP ──────────────────────────────────────────────────────────────────── -->
+<div id="app" hidden>
+
+  <header>
+    <div class="logo">Runneth <span>— Conflict Resolver</span></div>
+    <div class="header-right">
+      <span class="badge-count" id="conflict-badge">—</span>
+      <button class="btn-scan" id="scan-btn" onclick="startScan()">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+          <path d="M2 8a6 6 0 1 0 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M2 4v4h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Find conflicts
+      </button>
+    </div>
+  </header>
+
+  <div class="progress-bar-wrap">
+    <span class="progress-label" id="progress-label">Run a scan to begin</span>
+    <div class="progress-track">
+      <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+    </div>
+    <span class="progress-skipped" id="skipped-label"></span>
+  </div>
+
+  <main>
+
+    <!-- Conflict view -->
+    <div class="conflict-view hidden" id="conflict-view">
+      <div class="conflict-meta">
+        <span class="conflict-tag" id="conflict-tag"></span>
+        <span class="conflict-id"  id="conflict-id"></span>
+      </div>
+      <h1 class="conflict-title"    id="conflict-title"></h1>
+      <p  class="conflict-subtitle" id="conflict-subtitle"></p>
+
+      <div class="panels">
+        <div class="panel panel-left"  id="panel-left"  onclick="selectPanel('left')">
+          <div class="panel-header">
+            <span class="panel-file"><span class="file-dot"></span><span id="file-left"></span></span>
+            <span class="panel-line" id="line-left"></span>
+          </div>
+          <div class="panel-body" id="body-left"></div>
+          <div class="panel-check">✓</div>
+        </div>
+        <div class="panel panel-right" id="panel-right" onclick="selectPanel('right')">
+          <div class="panel-header">
+            <span class="panel-file"><span class="file-dot"></span><span id="file-right"></span></span>
+            <span class="panel-line" id="line-right"></span>
+          </div>
+          <div class="panel-body" id="body-right"></div>
+          <div class="panel-check">✓</div>
+        </div>
+      </div>
+
+      <div class="suggestion-box">
+        <span class="suggestion-icon">◆</span>
+        <div class="suggestion-text" id="suggestion-text"></div>
+      </div>
+
+      <div class="custom-panel" id="custom-panel">
+        <label>Write your own resolution</label>
+        <textarea id="custom-text" placeholder="Describe the correct behaviour in your own words…" oninput="onCustomInput()"></textarea>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-left"    id="btn-keep-left"  onclick="selectPanel('left')"></button>
+        <button class="btn btn-right"   id="btn-keep-right" onclick="selectPanel('right')"></button>
+        <button class="btn btn-custom"  onclick="toggleCustom()">Write my own</button>
+        <button class="btn btn-confirm" id="confirm-btn" onclick="confirmDecision()">Confirm &amp; next →</button>
+        <button class="btn btn-skip"    onclick="skipConflict()">Skip for now</button>
+      </div>
+    </div>
+
+    <!-- Review screen -->
+    <div id="review-view">
+      <div class="review-header">
+        <h1 class="conflict-title">Review changes</h1>
+        <p class="conflict-subtitle" id="review-subtitle"></p>
+      </div>
+      <div id="review-list"></div>
+      <div class="review-actions">
+        <button class="btn-back"   id="back-btn"   onclick="goBackToConflicts()">← Back to conflicts</button>
+        <button class="btn-commit" id="commit-btn" onclick="commitChanges()"></button>
+      </div>
+    </div>
+
+    <!-- All done / no conflicts -->
+    <div class="empty-state" id="empty-state">
+      <div class="empty-icon">✦</div>
+      <h2 class="empty-title" id="empty-title">All conflicts resolved</h2>
+      <p  class="empty-sub"   id="empty-sub">Your scope bible is consistent. Run another scan whenever you update your files.</p>
+    </div>
+
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════════
+//  CONFIG
+//  CLIENT_ID: same as the Game Bible — no extra Google Console setup needed.
+//  ANTHROPIC_API_KEY: paste your key below. This file is private (not public).
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const CLIENT_ID          = '41079217394-urci9a9quptu28vdfub0i0dlgcs5spng.apps.googleusercontent.com';
+const ANTHROPIC_KEY_STORAGE = 'runneth_anthropic_key';
+let   ANTHROPIC_API_KEY  = localStorage.getItem(ANTHROPIC_KEY_STORAGE) || '';
+const DRIVE_SCOPE        = 'https://www.googleapis.com/auth/drive';
+const SHARED_DRIVE_NAME  = 'Runneth';
+const BACKUP_FOLDER      = '_conflict_backups';
+
+const SYSTEM_PROMPT = `You are a consistency analyst for a game design document set.
+You will be given a set of Markdown files that form the authoritative source of truth for a narrative dungeon game called Runneth.
+Your job is to find ALL places where two or more files contradict each other — different rules, conflicting feature descriptions, incompatible numbers, or inconsistent behaviours described for the same feature.
+
+Return ONLY a valid JSON array. No preamble, no markdown fences, no explanation outside the JSON.
+If there are no conflicts, return an empty array: []
+
+Each item in the array must follow this exact shape:
+{
+  "id": "CON-001",
+  "tag": "Mechanic | Narrative | Character | Enemy | Item | World | Audio | Art | Other",
+  "title": "Short description of what the conflict is about",
+  "subtitle": "One sentence explaining the nature of the disagreement",
+  "fileLeft": "exact-filename.md",
+  "lineLeft": "approximate location, e.g. 'line 42' or 'section: Health Mechanics'",
+  "excerptLeft": "Verbatim or near-verbatim passage from fileLeft (30-80 words)",
+  "fileRight": "exact-filename.md",
+  "lineRight": "approximate location",
+  "excerptRight": "Verbatim or near-verbatim passage from fileRight (30-80 words)",
+  "suggestion": "Concrete recommendation for which version to keep and why (2-4 sentences)",
+  "searchLeft": "EXACT verbatim substring from fileLeft containing the conflicting statement. Must appear character-for-character in that file.",
+  "searchRight": "EXACT verbatim substring from fileRight containing the conflicting statement. Must appear character-for-character in that file.",
+  "replaceIfLeftWins": "If the left version is correct: replacement text for fileRight at searchRight. Empty string to remove. Null if fileRight needs no change.",
+  "replaceIfRightWins": "If the right version is correct: replacement text for fileLeft at searchLeft. Empty string to remove. Null if fileLeft needs no change."
+}
+
+Critical rules:
+- searchLeft and searchRight MUST be exact verbatim substrings of their respective files. Copy them character-for-character.
+- Only report genuine contradictions — not redundancy, not stylistic differences, not information missing from one file.
+- Do not report the same conflict twice.`;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let accessToken    = null;
+let driveId        = null;
+let fileNameToId   = {};   // filename → Drive file ID
+let fileIdContent  = {};   // Drive file ID → current content (refreshed before commit)
+
+let CONFLICTS      = [];
+let currentIndex   = 0;
+let resolvedCount  = 0;
+let skippedCount   = 0;
+let totalConflicts = 0;
+let selectedPanel  = null;
+let customOpen     = false;
+let scanning       = false;
+
+// Each entry: { conflictId, conflictTitle, decision, fileName, fileId, search, replace, isManual }
+// 'isManual' = true when Claude couldn't produce a reliable patch (search is null)
+let pendingChanges = [];
+let skippedConflicts = [];
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  AUTH  (Google Identity Services — same pattern as Game Bible)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let tokenClient;
+let tokenRefreshResolve = null;
+
+function initAuth() {
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope:     DRIVE_SCOPE,
+    callback:  async (resp) => {
+      if (resp.error) {
+        if (!tokenRefreshResolve) alert('Sign-in error: ' + resp.error);
+        tokenRefreshResolve = null;
+        return;
+      }
+      accessToken = resp.access_token;
+      if (tokenRefreshResolve) {
+        const resolve = tokenRefreshResolve;
+        tokenRefreshResolve = null;
+        resolve();
+        return;
+      }
+      // Initial sign-in
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('app').removeAttribute('hidden');
+      await initDrive();
+    },
+  });
+}
+
+function login() {
+  document.getElementById('login-btn').textContent = 'Signing in…';
+  tokenClient.requestAccessToken({ prompt: 'consent' });
+}
+
+function refreshToken() {
+  return new Promise(resolve => {
+    tokenRefreshResolve = resolve;
+    tokenClient.requestAccessToken({ prompt: '' });
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  GOOGLE DRIVE  (ported directly from Game Bible)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function driveGet(path) {
+  let resp = await fetch(`https://www.googleapis.com/drive/v3/${path}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (resp.status === 401) { await refreshToken(); return driveGet(path); }
+  if (!resp.ok) throw new Error(`Drive API ${resp.status}: ${await resp.text()}`);
+  return resp.json();
+}
+
+async function driveGetMedia(fileId) {
+  let resp = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (resp.status === 401) { await refreshToken(); return driveGetMedia(fileId); }
+  if (!resp.ok) throw new Error(`Could not read file (${resp.status})`);
+  return resp.text();
+}
+
+async function drivePatch(fileId, content) {
+  const makeRequest = () => fetch(
+    `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&supportsAllDrives=true`,
+    {
+      method:  'PATCH',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'text/plain; charset=utf-8' },
+      body:    content,
+    }
+  );
+  let resp = await makeRequest();
+  if (resp.status === 401) { await refreshToken(); resp = await makeRequest(); }
+  if (!resp.ok) throw new Error(`Save failed (${resp.status})`);
+}
+
+async function driveCreate(filename, parentId, content, mimeType = 'text/plain') {
+  const metadata = JSON.stringify({ name: filename, parents: [parentId] });
+  const boundary = 'runneth_boundary';
+  const body = [
+    `--${boundary}`, 'Content-Type: application/json; charset=UTF-8', '', metadata,
+    `--${boundary}`, `Content-Type: ${mimeType}; charset=UTF-8`,       '', content,
+    `--${boundary}--`,
+  ].join('\r\n');
+  const makeRequest = () => fetch(
+    `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true`,
+    {
+      method:  'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': `multipart/related; boundary=${boundary}` },
+      body,
+    }
+  );
+  let resp = await makeRequest();
+  if (resp.status === 401) { await refreshToken(); resp = await makeRequest(); }
+  if (!resp.ok) throw new Error(`Create failed (${resp.status}): ${await resp.text()}`);
+  return resp.json();
+}
+
+async function createFolder(name, parentId) {
+  const metadata = JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] });
+  const makeRequest = () => fetch(
+    'https://www.googleapis.com/drive/v3/files?supportsAllDrives=true',
+    {
+      method:  'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body:    metadata,
+    }
+  );
+  let resp = await makeRequest();
+  if (resp.status === 401) { await refreshToken(); resp = await makeRequest(); }
+  if (!resp.ok) throw new Error(`Create folder failed (${resp.status})`);
+  return resp.json();
+}
+
+async function resolveSharedDrive() {
+  const data  = await driveGet('drives?pageSize=50');
+  const drive = (data.drives || []).find(d => d.name === SHARED_DRIVE_NAME);
+  if (!drive) throw new Error(`Shared drive "${SHARED_DRIVE_NAME}" not found. Check your Google account.`);
+  return drive.id;
+}
+
+async function fetchAllFiles() {
+  // Drive API returns max 1000 per page — handle pagination
+  let allFiles = [], pageToken = null;
+  do {
+    const url =
+      `files?corpora=drive&driveId=${driveId}&includeItemsFromAllDrives=true&supportsAllDrives=true` +
+      `&fields=nextPageToken,files(id,name,mimeType,parents)&pageSize=1000` +
+      (pageToken ? `&pageToken=${pageToken}` : '');
+    const data = await driveGet(url);
+    allFiles = allFiles.concat(data.files || []);
+    pageToken = data.nextPageToken || null;
+  } while (pageToken);
+  return allFiles;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function initDrive() {
+  try {
+    driveId = await resolveSharedDrive();
+    document.getElementById('conflict-badge').textContent = 'Ready';
+    showToast('Connected to Runneth Drive ✓');
+  } catch (e) {
+    showToast('Drive error: ' + e.message);
+    console.error(e);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  LOAD TRACKED FILES
+//  Reads scope.json, returns only tracked .md files with their content.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function loadTrackedFiles() {
+  const allFiles = await fetchAllFiles();
+
+  // Find scope.json
+  const scopeFile = allFiles.find(f => f.name === 'scope.json');
+  const scopeMap  = {};   // fileId → 'tracked' | 'ignored'
+
+  if (scopeFile) {
+    try {
+      const raw  = await driveGetMedia(scopeFile.id);
+      const data = JSON.parse(raw);
+      Object.assign(scopeMap, data.scope || {});
+    } catch (_) {
+      // scope.json unreadable — treat everything as tracked
+    }
+  }
+
+  // Filter: .md files that are not explicitly ignored
+  const mdFiles = allFiles.filter(f =>
+    f.name.endsWith('.md') &&
+    f.mimeType !== 'application/vnd.google-apps.folder' &&
+    scopeMap[f.id] !== 'ignored'
+  );
+
+  // Build filename → ID map and fetch content
+  fileNameToId  = {};
+  fileIdContent = {};
+  const result  = [];
+
+  for (const file of mdFiles) {
+    fileNameToId[file.name]  = file.id;
+    const content            = await driveGetMedia(file.id);
+    fileIdContent[file.id]   = content;
+    result.push({ name: file.name, content, id: file.id });
+  }
+
+  return result;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  ANTHROPIC  (direct browser call — no server needed)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function callClaude(files) {
+  const fileContext = files
+    .map(f => `=== FILE: ${f.name} ===\n${f.content}`)
+    .join('\n\n');
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method:  'POST',
+    headers: {
+      'x-api-key':                               ANTHROPIC_API_KEY,
+      'anthropic-version':                        '2023-06-01',
+      'content-type':                             'application/json',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model:      'claude-sonnet-4-20250514',
+      max_tokens: 8000,
+      system:     SYSTEM_PROMPT,
+      messages:   [{ role: 'user', content: `Here are all the tracked scope bible files. Find every conflict between them:\n\n${fileContext}` }],
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Anthropic API error ${res.status}`);
+  }
+
+  const data = await res.json();
+  let raw = data.content[0].text.trim()
+    .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
+
+  let conflicts;
+  try { conflicts = JSON.parse(raw); }
+  catch (e) { throw new Error('Claude returned malformed JSON. Try scanning again.'); }
+
+  if (!Array.isArray(conflicts)) throw new Error('Unexpected response format from Claude.');
+  return conflicts;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  SCAN
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function startScan() {
+  if (scanning) return;
+
+  if (!ANTHROPIC_API_KEY) {
+    showToast('Paste your Anthropic API key first — it\'s on the login screen.');
+    return;
+  }
+
+  scanning = true;
+  const btn = document.getElementById('scan-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="scan-dot"></span> Scanning…';
+
+  setScanStatus('Loading file scope…');
+
+  try {
+    const files = await loadTrackedFiles();
+    if (!files.length) {
+      throw new Error('No tracked .md files found. Open the Game Bible Admin panel to configure scope.');
+    }
+
+    setScanStatus(`Analysing ${files.length} files with Claude…`);
+
+    CONFLICTS        = await callClaude(files);
+    totalConflicts   = CONFLICTS.length;
+    currentIndex     = 0;
+    resolvedCount    = 0;
+    skippedCount     = 0;
+    pendingChanges   = [];
+    skippedConflicts = [];
+
+    updateProgress();
+    document.getElementById('conflict-badge').textContent =
+      totalConflicts === 0 ? '0 conflicts' : `${totalConflicts} conflict${totalConflicts === 1 ? '' : 's'}`;
+
+    hideAllViews();
+    if (totalConflicts === 0) {
+      showEmpty('No conflicts found', 'All tracked files are consistent. Run another scan after making changes.');
+    } else {
+      document.getElementById('conflict-view').classList.remove('hidden');
+      loadConflict(0);
+      showToast(`${totalConflicts} conflict${totalConflicts === 1 ? '' : 's'} found`);
+    }
+
+  } catch (err) {
+    showToast('Error: ' + err.message);
+    console.error(err);
+    setScanStatus('Scan failed — see console');
+  } finally {
+    scanning = false;
+    btn.disabled = false;
+    btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+      <path d="M2 8a6 6 0 1 0 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      <path d="M2 4v4h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg> Find conflicts`;
+  }
+}
+
+function setScanStatus(msg) {
+  document.getElementById('progress-label').textContent = msg;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  CONFLICT UI
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function loadConflict(i) {
+  if (i >= CONFLICTS.length) { showReview(); return; }
+  const c    = CONFLICTS[i];
+  selectedPanel = null;
+  customOpen    = false;
+
+  document.getElementById('conflict-tag').textContent      = c.tag;
+  document.getElementById('conflict-id').textContent       = c.id;
+  document.getElementById('conflict-title').textContent    = c.title;
+  document.getElementById('conflict-subtitle').textContent = c.subtitle;
+  document.getElementById('file-left').textContent         = c.fileLeft;
+  document.getElementById('line-left').textContent         = c.lineLeft;
+  document.getElementById('file-right').textContent        = c.fileRight;
+  document.getElementById('line-right').textContent        = c.lineRight;
+  document.getElementById('body-left').innerHTML           = c.excerptLeft;
+  document.getElementById('body-right').innerHTML          = c.excerptRight;
+  document.getElementById('suggestion-text').innerHTML     = '<strong>Suggestion:</strong> ' + escHtml(c.suggestion);
+  document.getElementById('btn-keep-left').textContent     = 'Keep ' + c.fileLeft;
+  document.getElementById('btn-keep-right').textContent    = 'Keep ' + c.fileRight;
+
+  document.getElementById('panel-left').classList.remove('selected-left', 'selected-right');
+  document.getElementById('panel-right').classList.remove('selected-left', 'selected-right');
+  document.getElementById('custom-panel').classList.remove('open');
+  document.getElementById('custom-text').value = '';
+
+  const confirmBtn = document.getElementById('confirm-btn');
+  confirmBtn.classList.remove('active');
+}
+
+function selectPanel(side) {
+  selectedPanel = side;
+  document.getElementById('panel-left').classList.remove('selected-left', 'selected-right');
+  document.getElementById('panel-right').classList.remove('selected-left', 'selected-right');
+  if (side === 'left')  document.getElementById('panel-left').classList.add('selected-left');
+  if (side === 'right') document.getElementById('panel-right').classList.add('selected-right');
+  document.getElementById('confirm-btn').classList.add('active');
+}
+
+function toggleCustom() {
+  customOpen = !customOpen;
+  document.getElementById('custom-panel').classList.toggle('open', customOpen);
+  if (customOpen) {
+    selectedPanel = null;
+    document.getElementById('panel-left').classList.remove('selected-left');
+    document.getElementById('panel-right').classList.remove('selected-right');
+    document.getElementById('confirm-btn').classList.remove('active');
+  }
+}
+
+function onCustomInput() {
+  const hasText = document.getElementById('custom-text').value.trim().length > 0;
+  if (customOpen) {
+    selectedPanel = hasText ? 'custom' : null;
+    document.getElementById('confirm-btn').classList.toggle('active', hasText);
+  }
+}
+
+function confirmDecision() {
+  if (!selectedPanel) return;
+
+  const c          = CONFLICTS[currentIndex];
+  const customText = document.getElementById('custom-text').value.trim();
+
+  if (selectedPanel === 'left') {
+    // Left wins → update fileRight (replace its conflicting passage)
+    const fileId = fileNameToId[c.fileRight];
+    if (fileId) {
+      pendingChanges.push({
+        conflictId:    c.id,
+        conflictTitle: c.title,
+        decision:      'left',
+        fileName:      c.fileRight,
+        fileId,
+        search:        c.searchRight   || null,
+        replace:       c.replaceIfLeftWins !== undefined ? c.replaceIfLeftWins : null,
+        isManual:      !c.searchRight,
+      });
+    }
+  } else if (selectedPanel === 'right') {
+    // Right wins → update fileLeft (replace its conflicting passage)
+    const fileId = fileNameToId[c.fileLeft];
+    if (fileId) {
+      pendingChanges.push({
+        conflictId:    c.id,
+        conflictTitle: c.title,
+        decision:      'right',
+        fileName:      c.fileLeft,
+        fileId,
+        search:        c.searchLeft    || null,
+        replace:       c.replaceIfRightWins !== undefined ? c.replaceIfRightWins : null,
+        isManual:      !c.searchLeft,
+      });
+    }
+  } else if (selectedPanel === 'custom' && customText) {
+    // Custom → update both files with the custom text
+    const leftId  = fileNameToId[c.fileLeft];
+    const rightId = fileNameToId[c.fileRight];
+    if (leftId) pendingChanges.push({
+      conflictId: c.id, conflictTitle: c.title, decision: 'custom',
+      fileName: c.fileLeft,  fileId: leftId,
+      search: c.searchLeft  || null, replace: customText, isManual: !c.searchLeft,
+    });
+    if (rightId) pendingChanges.push({
+      conflictId: c.id, conflictTitle: c.title, decision: 'custom',
+      fileName: c.fileRight, fileId: rightId,
+      search: c.searchRight || null, replace: customText, isManual: !c.searchRight,
+    });
+  }
+
+  resolvedCount++;
+  currentIndex++;
+  updateProgress();
+  showToast('Resolved ✓');
+
+  if (currentIndex >= CONFLICTS.length) {
+    setTimeout(() => showReview(), 350);
+  } else {
+    setTimeout(() => loadConflict(currentIndex), 300);
+  }
+}
+
+function skipConflict() {
+  skippedConflicts.push(CONFLICTS[currentIndex]);
+  skippedCount++;
+  currentIndex++;
+  updateProgress();
+  showToast('Skipped');
+  if (currentIndex >= CONFLICTS.length) {
+    setTimeout(() => showReview(), 350);
+  } else {
+    setTimeout(() => loadConflict(currentIndex), 300);
+  }
+}
+
+function updateProgress() {
+  const pct = totalConflicts > 0 ? Math.round((resolvedCount / totalConflicts) * 100) : 0;
+  document.getElementById('progress-fill').style.width  = pct + '%';
+  document.getElementById('progress-label').textContent = `${resolvedCount} of ${totalConflicts} resolved`;
+  document.getElementById('skipped-label').textContent  = skippedCount > 0 ? `${skippedCount} skipped` : '';
+  document.getElementById('conflict-badge').textContent = `${totalConflicts - resolvedCount} remaining`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  REVIEW SCREEN
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function showReview() {
+  hideAllViews();
+  document.getElementById('review-view').classList.add('visible');
+
+  const actionCount  = pendingChanges.filter(c => !c.isManual).length;
+  const manualCount  = pendingChanges.filter(c => c.isManual).length;
+
+  let subtitle = '';
+  if (actionCount > 0)  subtitle += `${actionCount} change${actionCount === 1 ? '' : 's'} will be written to Drive.`;
+  if (manualCount > 0)  subtitle += ` ${manualCount} require manual editing.`;
+  if (skippedCount > 0) subtitle += ` ${skippedCount} skipped.`;
+  if (!subtitle)        subtitle  = 'No automated changes to apply.';
+  document.getElementById('review-subtitle').textContent = subtitle;
+
+  const commitBtn = document.getElementById('commit-btn');
+  commitBtn.textContent = actionCount > 0
+    ? `Commit ${actionCount} change${actionCount === 1 ? '' : 's'} to Drive`
+    : 'Nothing to commit';
+  commitBtn.disabled = actionCount === 0;
+
+  renderReviewList();
+}
+
+function renderReviewList() {
+  const list = document.getElementById('review-list');
+  list.innerHTML = '';
+
+  if (pendingChanges.length === 0 && skippedConflicts.length === 0) {
+    list.innerHTML = '<p style="color:var(--text-muted);font-size:14px;">No changes queued.</p>';
+    return;
+  }
+
+  if (pendingChanges.length > 0) {
+    list.insertAdjacentHTML('beforeend', '<div class="review-section-label">Changes to apply</div>');
+    pendingChanges.forEach((change, idx) => {
+      const isRemoval  = change.replace === '' || change.replace === null;
+      const statusCls  = change.isManual ? 'manual' : 'pending';
+      const statusLbl  = change.isManual ? 'Manual edit required' : 'Pending';
+      const replaceHtml = change.isManual
+        ? `<div class="change-excerpt" style="color:var(--warn);font-size:12px;">⚠ Claude could not locate this passage exactly. Edit this file manually.</div>`
+        : isRemoval
+          ? `<div class="change-excerpt removed">${escHtml(change.search || '')}</div>`
+          : `<div class="change-excerpt new-text">${escHtml(change.replace || '')}</div>`;
+
+      list.insertAdjacentHTML('beforeend', `
+        <div class="change-entry" data-change-idx="${idx}" id="change-entry-${idx}">
+          <div class="change-entry-header">
+            <span class="change-filename">${escHtml(change.fileName)}</span>
+            <span class="change-conflict-ref">${escHtml(change.conflictId)}</span>
+            <span class="change-status ${statusCls}" id="change-status-${idx}">${statusLbl}</span>
+          </div>
+          <div class="change-body">
+            <div class="change-side">
+              <label>Replacing</label>
+              <div class="change-excerpt">${escHtml(change.search || '(could not locate passage)')}</div>
+            </div>
+            <div class="change-arrow">→</div>
+            <div class="change-side">
+              <label>${isRemoval ? 'With (removed)' : 'With'}</label>
+              ${replaceHtml}
+            </div>
+          </div>
+        </div>
+      `);
+    });
+  }
+
+  if (skippedConflicts.length > 0) {
+    list.insertAdjacentHTML('beforeend', '<div class="review-section-label">Skipped (no action taken)</div>');
+    skippedConflicts.forEach(c => {
+      list.insertAdjacentHTML('beforeend', `
+        <div class="skipped-entry">
+          <span>${escHtml(c.title)}</span>
+          <span class="skipped-label">${escHtml(c.id)}</span>
+        </div>
+      `);
+    });
+  }
+}
+
+function goBackToConflicts() {
+  hideAllViews();
+  currentIndex = Math.max(0, resolvedCount + skippedCount);
+  if (currentIndex < CONFLICTS.length) {
+    document.getElementById('conflict-view').classList.remove('hidden');
+    loadConflict(currentIndex);
+  } else {
+    // All conflicts were handled — go back to last one
+    currentIndex = CONFLICTS.length - 1;
+    document.getElementById('conflict-view').classList.remove('hidden');
+    loadConflict(currentIndex);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  COMMIT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function commitChanges() {
+  const btn = document.getElementById('commit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Committing…';
+  document.getElementById('back-btn').disabled = true;
+
+  const actionable = pendingChanges.filter(c => !c.isManual && c.search);
+  if (actionable.length === 0) {
+    showToast('Nothing to commit.');
+    btn.disabled = false;
+    document.getElementById('back-btn').disabled = false;
+    return;
+  }
+
+  // Ensure backup folder exists
+  let backupFolderId;
+  try {
+    backupFolderId = await ensureBackupFolder();
+  } catch (e) {
+    showToast('Could not create backup folder: ' + e.message);
+    btn.disabled = false;
+    document.getElementById('back-btn').disabled = false;
+    return;
+  }
+
+  let successCount = 0;
+  let failCount    = 0;
+
+  for (const change of actionable) {
+    const idx = pendingChanges.indexOf(change);
+    setChangeStatus(idx, 'pending', 'Writing…');
+
+    try {
+      // 1. Fetch fresh file content (never use stale cache for writes)
+      const current = await driveGetMedia(change.fileId);
+
+      // 2. Apply patch
+      const patched = applyPatch(current, change.search, change.replace);
+      if (!patched.success) {
+        setChangeStatus(idx, 'manual', `⚠ ${patched.reason}`);
+        failCount++;
+        continue;
+      }
+
+      // 3. Write backup
+      const timestamp   = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const baseName    = change.fileName.replace(/\.md$/, '');
+      const backupName  = `${baseName}_${timestamp}.md`;
+      await driveCreate(backupName, backupFolderId, current);
+
+      // 4. Write updated file to Drive
+      await drivePatch(change.fileId, patched.result);
+
+      setChangeStatus(idx, 'success', '✓ Updated');
+      successCount++;
+
+    } catch (e) {
+      setChangeStatus(idx, 'error', '✗ ' + e.message);
+      failCount++;
+      console.error(`Failed to update ${change.fileName}:`, e);
+    }
+  }
+
+  // Final status
+  if (failCount === 0) {
+    showToast(`${successCount} file${successCount === 1 ? '' : 's'} updated. Backups saved in ${BACKUP_FOLDER}.`);
+    document.getElementById('commit-btn').textContent = 'Done ✓';
+    // Show completion state after a moment
+    setTimeout(() => {
+      hideAllViews();
+      showEmpty(
+        'Changes committed',
+        `${successCount} file${successCount === 1 ? '' : 's'} updated in Drive. Backups are in the ${BACKUP_FOLDER} folder. Run a new scan to check for remaining conflicts.`
+      );
+    }, 1500);
+  } else {
+    showToast(`${successCount} updated, ${failCount} failed. See review panel for details.`);
+    btn.textContent = `Retry ${failCount} failed`;
+    btn.disabled    = false;
+    document.getElementById('back-btn').disabled = false;
+  }
+}
+
+async function ensureBackupFolder() {
+  const allFiles = await fetchAllFiles();
+  const existing = allFiles.find(
+    f => f.name === BACKUP_FOLDER && f.mimeType === 'application/vnd.google-apps.folder'
+  );
+  if (existing) return existing.id;
+
+  // Find Drive root folder ID (the Shared Drive itself is the root)
+  // We create the backup folder at the root of the Shared Drive
+  const folder = await createFolder(BACKUP_FOLDER, driveId);
+  return folder.id;
+}
+
+function applyPatch(content, search, replacement) {
+  if (!search) return { success: false, result: content, reason: 'No search string provided.' };
+
+  // Exact match
+  const idx = content.indexOf(search);
+  if (idx !== -1) {
+    return {
+      success: true,
+      result: content.slice(0, idx) + (replacement || '') + content.slice(idx + search.length),
+    };
+  }
+
+  // Fallback: try trimmed match (handles minor whitespace differences)
+  const trimmed = search.trim();
+  const tidx    = content.indexOf(trimmed);
+  if (tidx !== -1) {
+    return {
+      success: true,
+      result: content.slice(0, tidx) + (replacement || '') + content.slice(tidx + trimmed.length),
+    };
+  }
+
+  return { success: false, result: content, reason: 'Search string not found in file. Edit manually.' };
+}
+
+function setChangeStatus(idx, cls, label) {
+  const el = document.getElementById(`change-status-${idx}`);
+  if (!el) return;
+  el.className = `change-status ${cls}`;
+  el.textContent = label;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  UI HELPERS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function hideAllViews() {
+  document.getElementById('conflict-view').classList.add('hidden');
+  document.getElementById('review-view').classList.remove('visible');
+  document.getElementById('empty-state').classList.remove('visible');
+}
+
+function showEmpty(title = 'All conflicts resolved', sub = 'Your scope bible is consistent. Run another scan whenever you update your files.') {
+  hideAllViews();
+  document.getElementById('empty-title').textContent = title;
+  document.getElementById('empty-sub').textContent   = sub;
+  document.getElementById('empty-state').classList.add('visible');
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+function escHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  API KEY MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function saveApiKey() {
+  const val = document.getElementById('api-key-input').value.trim();
+  if (!val.startsWith('sk-ant-')) {
+    setKeyStatus('Key should start with sk-ant-', 'err');
+    return;
+  }
+  localStorage.setItem(ANTHROPIC_KEY_STORAGE, val);
+  ANTHROPIC_API_KEY = val;
+  setKeyStatus('Saved ✓', 'ok');
+}
+
+function onApiKeyInput() {
+  // Clear status when user is typing
+  setKeyStatus('', '');
+}
+
+function setKeyStatus(msg, cls) {
+  const el = document.getElementById('api-key-status');
+  el.textContent  = msg;
+  el.className    = 'api-key-status' + (cls ? ' ' + cls : '');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  BOOT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+window.addEventListener('load', () => {
+  // Pre-fill API key input if already saved
+  const saved = localStorage.getItem(ANTHROPIC_KEY_STORAGE);
+  if (saved) {
+    document.getElementById('api-key-input').value = saved;
+    setKeyStatus('Key loaded from browser storage ✓', 'ok');
+  }
+
+  const check = setInterval(() => {
+    if (window.google?.accounts?.oauth2) {
+      clearInterval(check);
+      initAuth();
+    }
+  }, 100);
+});
+</script>
+
+<!-- Google Identity Services — loaded last, non-blocking -->
+<script src="https://accounts.google.com/gsi/client" async></script>
+
+</body>
+</html>
