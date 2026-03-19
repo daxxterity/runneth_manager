@@ -1084,7 +1084,7 @@ function renderBeat(meta, raw, fileId) {
   html += editBar(fileId);
   setContent(html);
   applyView();
-  if (fm.images?.length) initCarousel(fm.images);
+  if (Array.isArray(fm.images) && fm.images.length) initCarousel(fm.images);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1130,7 +1130,7 @@ function renderEntity(meta, raw, fileId) {
   html += editBar(fileId);
   setContent(html);
   applyView();
-  if (fm.images?.length) initCarousel(fm.images);
+  if (Array.isArray(fm.images) && fm.images.length) initCarousel(fm.images);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1140,7 +1140,7 @@ function renderEntity(meta, raw, fileId) {
 // Generates the static HTML shell for the carousel.
 // initCarousel() must be called after setContent() to populate the first slide.
 function renderImageCarousel(images) {
-  if (!images || !images.length) return '';
+  if (!images || !Array.isArray(images) || !images.length) return '';
 
   const multi   = images.length > 1;
   const chevron = imagesPanelExpanded ? '▼' : '▶';
