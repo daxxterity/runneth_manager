@@ -982,28 +982,36 @@ function parseFrontmatter(raw) {
     const val = line.slice(colon + 1).trim();
 
     if (!val) {
-      // Possible block sequence: next lines start with "  - "
+      // Possible block sequence — flexible indentation: any " *- " starts an item
       const items = [];
       i++;
-      while (i < lines.length && /^  - /.test(lines[i])) {
-        const obj = {};
-        // First KV on the "  - key: value" line
-        const firstKV = lines[i].slice(4);
-        const fc = firstKV.indexOf(':');
-        if (fc > 0) {
-          obj[firstKV.slice(0, fc).trim()] = firstKV.slice(fc + 1).trim().replace(/^["']|["']$/g, '');
-        }
-        i++;
-        // Continuation lines indented deeper: "    key: value"
-        while (i < lines.length && /^    \S/.test(lines[i])) {
-          const kv = lines[i].trim();
-          const kc = kv.indexOf(':');
-          if (kc > 0) {
-            obj[kv.slice(0, kc).trim()] = kv.slice(kc + 1).trim().replace(/^["']|["']$/g, '');
+      while (i < lines.length) {
+        const line = lines[i];
+        if (!line.trim()) { i++; continue; }    // skip blank lines
+        if (!/^ /.test(line)) break;            // back at root level — done
+        if (/^ *- /.test(line)) {
+          // New list item
+          const obj = {};
+          const dashPos = line.indexOf('- ');
+          const firstKV = line.slice(dashPos + 2);
+          const fc = firstKV.indexOf(':');
+          if (fc > 0) {
+            obj[firstKV.slice(0, fc).trim()] = firstKV.slice(fc + 1).trim().replace(/^["']|["']$/g, '');
           }
           i++;
+          // Continuation lines: indented and not starting a new item
+          while (i < lines.length && lines[i].trim() && /^ /.test(lines[i]) && !/^ *- /.test(lines[i])) {
+            const kv = lines[i].trim();
+            const kc = kv.indexOf(':');
+            if (kc > 0) {
+              obj[kv.slice(0, kc).trim()] = kv.slice(kc + 1).trim().replace(/^["']|["']$/g, '');
+            }
+            i++;
+          }
+          items.push(obj);
+        } else {
+          break;
         }
-        items.push(obj);
       }
       fm[key] = items.length ? items : null;
     } else if (val.startsWith('[') && val.endsWith(']')) {
