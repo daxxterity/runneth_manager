@@ -521,7 +521,8 @@
       <button class="view-toggle active" data-view="full">Full</button>
       <button class="view-toggle"        data-view="narrative">Narrative</button>
       <button class="view-toggle"        data-view="developer">Developer</button>
-      <button class="view-toggle"        id="admin-btn" onclick="openAdmin()">Admin</button>
+      <button class="view-toggle"        id="admin-btn"     onclick="openAdmin()">Admin</button>
+      <button class="view-toggle"        id="conflicts-btn" onclick="openConflictResolver()">Resolve conflicts</button>
     </div>
   </header>
   <div class="layout">
@@ -1413,6 +1414,10 @@ function closeAdmin() {
   document.getElementById('content-inner').innerHTML = adminSavedHTML;
   adminSavedHTML = null;
   applyView();
+}
+
+function openConflictResolver() {
+  window.open('https://runneth-km.marcoantonio.org/conflicts/', '_blank');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
