@@ -130,6 +130,29 @@
     #sidebar::-webkit-scrollbar { width: 3px; }
     #sidebar::-webkit-scrollbar-thumb { background: var(--border); }
 
+    /* Top-level category header (two-level hierarchy) */
+    .nav-category {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      width: 100%;
+      background: #111;
+      border: none;
+      border-top: 2px solid var(--border);
+      color: var(--accent);
+      font-size: 0.6rem;
+      letter-spacing: 0.2em;
+      padding: 0.6rem 1rem 0.5rem;
+      font-family: monospace;
+      font-weight: bold;
+      cursor: pointer;
+      text-align: left;
+      margin-top: 0.8rem;
+      user-select: none;
+    }
+    .nav-category:hover { background: var(--border); }
+    .nav-category-items.collapsed { display: none; }
+
     .nav-group {
       display: flex;
       align-items: center;
@@ -157,6 +180,7 @@
       flex-shrink: 0;
     }
     .nav-group.collapsed .nav-chevron { transform: rotate(-90deg); }
+    .nav-category.collapsed .nav-chevron { transform: rotate(-90deg); }
     .nav-group-items.collapsed { display: none; }
     .nav-item {
       display: flex;
@@ -267,6 +291,87 @@
       font-size: 0.76rem;
       color: var(--text-dim);
       font-style: italic;
+    }
+
+    /* ── IMAGE CAROUSEL ──────────────────────────────────────────────────── */
+    .images-panel {
+      margin: 0.8rem 0 1.5rem;
+      border: 1px solid var(--border);
+    }
+    .images-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      background: var(--surface);
+      border: none;
+      color: var(--text-dim);
+      font-size: 0.62rem;
+      letter-spacing: 0.22em;
+      font-family: monospace;
+      padding: 0.5rem 0.8rem;
+      cursor: pointer;
+      text-align: left;
+      transition: background 0.1s;
+    }
+    .images-header:hover { background: var(--surface2); }
+    .images-chevron { font-size: 0.5rem; }
+    .carousel-body { padding: 0.75rem; background: var(--surface); }
+    .carousel-nav-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.7rem;
+    }
+    .carousel-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 0.65rem;
+      flex-shrink: 0;
+      transition: all 0.15s;
+    }
+    .carousel-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .carousel-dots {
+      display: flex;
+      gap: 0.35rem;
+      flex: 1;
+      justify-content: center;
+      align-items: center;
+    }
+    .carousel-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--border);
+      border: none;
+      cursor: pointer;
+      padding: 0;
+      transition: background 0.15s;
+    }
+    .carousel-dot.active { background: var(--accent); }
+    .carousel-slide-area { position: relative; min-height: 2rem; }
+    .carousel-img { width: 100%; height: auto; display: block; }
+    .carousel-loading {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      font-family: monospace;
+      padding: 1rem 0;
+      text-align: center;
+    }
+    .carousel-caption {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      font-style: italic;
+      margin-top: 0.5rem;
+      text-align: center;
+      min-height: 1.2em;
     }
 
     /* ── SECTIONS ────────────────────────────────────────────────────────── */
@@ -560,11 +665,17 @@ let driveId         = null;
 let manifest        = null;
 let fileIdCache     = {};   // filename  → Drive file ID
 let contentCache    = {};   // fileId    → raw text
+let imageBlobCache  = {};   // fileId    → blob object URL
 
 let currentView     = 'full';
 let currentPageMeta = null;
 let currentPageType = null;   // 'beat' | 'entity'
 let editSavedHTML   = null;   // snapshot before entering edit mode
+
+// Carousel state — persists across page navigations (SPA never reloads)
+let imagesPanelExpanded = true;
+let _carouselImages     = [];
+let _carouselIndex      = 0;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  AUTH  (Google Identity Services)
@@ -635,6 +746,21 @@ async function driveGetMedia(fileId) {
   const text = await resp.text();
   contentCache[fileId] = text;
   return text;
+}
+
+// Fetches a Drive file as a blob URL (for images). Cached by file ID.
+async function driveGetBlob(fileId) {
+  if (imageBlobCache[fileId]) return imageBlobCache[fileId];
+  let resp = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (resp.status === 401) { await refreshToken(); return driveGetBlob(fileId); }
+  if (!resp.ok) throw new Error(`Could not load image (${resp.status})`);
+  const blob = await resp.blob();
+  const url  = URL.createObjectURL(blob);
+  imageBlobCache[fileId] = url;
+  return url;
 }
 
 async function driveCreate(filename, parentId, content) {
@@ -726,11 +852,17 @@ function toggleNavGroup(btn) {
   btn.nextElementSibling?.classList.toggle('collapsed');
 }
 
+function toggleNavCategory(btn) {
+  btn.classList.toggle('collapsed');
+  btn.nextElementSibling?.classList.toggle('collapsed');
+}
+
 function renderSidebar() {
   const nav = document.getElementById('sidebar');
   const ICONS = { intro: '◆', tutorial: 'T', level: 'L' };
   let html = '';
 
+  // STORY — always at top, outside any category
   html += `<button class="nav-group" onclick="toggleNavGroup(this)"><span class="nav-chevron">▼</span>STORY</button>`;
   html += `<div class="nav-group-items">`;
   for (const beat of manifest.beats) {
@@ -746,16 +878,40 @@ function renderSidebar() {
     'planning': '·', 'game mechanics': '⚙', 'bestiary': 'B',
     'items': 'I', 'reference': 'R', 'exit keys': 'K'
   };
-  for (const [groupKey, items] of Object.entries(manifest.entities)) {
-    const icon = GROUP_ICONS[groupKey.toLowerCase()] || groupKey[0].toUpperCase();
-    html += `<button class="nav-group" onclick="toggleNavGroup(this)"><span class="nav-chevron">▼</span>${groupKey.toUpperCase()}</button>`;
-    html += `<div class="nav-group-items">`;
-    for (const item of items) {
-      html += `<button class="nav-item" data-id="${item.id}" data-type="entity">
-        <span class="nav-icon">${icon}</span><span>${item.name}</span>
-      </button>`;
+
+  if (manifest.categories) {
+    // Two-level hierarchy: categories → groups → items
+    for (const [catLabel, groupKeys] of Object.entries(manifest.categories)) {
+      html += `<button class="nav-category" onclick="toggleNavCategory(this)"><span class="nav-chevron">▼</span>${catLabel.toUpperCase()}</button>`;
+      html += `<div class="nav-category-items">`;
+      for (const groupKey of groupKeys) {
+        const items = manifest.entities[groupKey];
+        if (!items) continue;
+        const icon = GROUP_ICONS[groupKey.toLowerCase()] || groupKey[0].toUpperCase();
+        html += `<button class="nav-group" onclick="toggleNavGroup(this)"><span class="nav-chevron">▼</span>${groupKey.toUpperCase()}</button>`;
+        html += `<div class="nav-group-items">`;
+        for (const item of items) {
+          html += `<button class="nav-item" data-id="${item.id}" data-type="entity">
+            <span class="nav-icon">${icon}</span><span>${item.name}</span>
+          </button>`;
+        }
+        html += `</div>`;
+      }
+      html += `</div>`;
     }
-    html += `</div>`;
+  } else {
+    // Fallback: flat rendering (no categories key in manifest)
+    for (const [groupKey, items] of Object.entries(manifest.entities)) {
+      const icon = GROUP_ICONS[groupKey.toLowerCase()] || groupKey[0].toUpperCase();
+      html += `<button class="nav-group" onclick="toggleNavGroup(this)"><span class="nav-chevron">▼</span>${groupKey.toUpperCase()}</button>`;
+      html += `<div class="nav-group-items">`;
+      for (const item of items) {
+        html += `<button class="nav-item" data-id="${item.id}" data-type="entity">
+          <span class="nav-icon">${icon}</span><span>${item.name}</span>
+        </button>`;
+      }
+      html += `</div>`;
+    }
   }
 
   nav.innerHTML = html;
@@ -810,22 +966,58 @@ async function openEntity(entity) {
 function parseFrontmatter(raw) {
   const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
   if (!m) return { fm: {}, body: raw };
-  const body = raw.slice(m[0].length);
-  const fm   = {};
-  for (const line of m[1].split('\n')) {
+  const body  = raw.slice(m[0].length);
+  const fm    = {};
+  const lines = m[1].split('\n');
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    // Skip indented lines that are part of a block we already processed
+    if (line.startsWith(' ') || line.startsWith('\t')) { i++; continue; }
     const colon = line.indexOf(':');
-    if (colon < 1) continue;
+    if (colon < 1) { i++; continue; }
+
     const key = line.slice(0, colon).trim();
     const val = line.slice(colon + 1).trim();
-    if (val.startsWith('[') && val.endsWith(']')) {
+
+    if (!val) {
+      // Possible block sequence: next lines start with "  - "
+      const items = [];
+      i++;
+      while (i < lines.length && /^  - /.test(lines[i])) {
+        const obj = {};
+        // First KV on the "  - key: value" line
+        const firstKV = lines[i].slice(4);
+        const fc = firstKV.indexOf(':');
+        if (fc > 0) {
+          obj[firstKV.slice(0, fc).trim()] = firstKV.slice(fc + 1).trim().replace(/^["']|["']$/g, '');
+        }
+        i++;
+        // Continuation lines indented deeper: "    key: value"
+        while (i < lines.length && /^    \S/.test(lines[i])) {
+          const kv = lines[i].trim();
+          const kc = kv.indexOf(':');
+          if (kc > 0) {
+            obj[kv.slice(0, kc).trim()] = kv.slice(kc + 1).trim().replace(/^["']|["']$/g, '');
+          }
+          i++;
+        }
+        items.push(obj);
+      }
+      fm[key] = items.length ? items : null;
+    } else if (val.startsWith('[') && val.endsWith(']')) {
       fm[key] = val.slice(1, -1)
         .split(',')
         .map(s => s.trim().replace(/^["']|["']$/g, ''))
         .filter(Boolean);
+      i++;
     } else {
       fm[key] = val.replace(/^["']|["']$/g, '') || null;
+      i++;
     }
   }
+
   return { fm, body };
 }
 
@@ -877,6 +1069,9 @@ function renderBeat(meta, raw, fileId) {
     html += `</div>`;
   }
 
+  // Image carousel
+  html += renderImageCarousel(fm.images);
+
   for (const { name, content } of sections) {
     if (!content) continue;
     const key = name.toLowerCase();
@@ -889,6 +1084,7 @@ function renderBeat(meta, raw, fileId) {
   html += editBar(fileId);
   setContent(html);
   applyView();
+  if (fm.images?.length) initCarousel(fm.images);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -919,6 +1115,9 @@ function renderEntity(meta, raw, fileId) {
     </div>`;
   }
 
+  // Image carousel
+  html += renderImageCarousel(fm.images);
+
   for (const { name, content } of sections) {
     if (!content) continue;
     const key = name.toLowerCase();
@@ -931,6 +1130,107 @@ function renderEntity(meta, raw, fileId) {
   html += editBar(fileId);
   setContent(html);
   applyView();
+  if (fm.images?.length) initCarousel(fm.images);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  IMAGE CAROUSEL
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Generates the static HTML shell for the carousel.
+// initCarousel() must be called after setContent() to populate the first slide.
+function renderImageCarousel(images) {
+  if (!images || !images.length) return '';
+
+  const multi   = images.length > 1;
+  const chevron = imagesPanelExpanded ? '▼' : '▶';
+  const bodyStyle = imagesPanelExpanded ? '' : 'display:none;';
+
+  let navHtml = '';
+  if (multi) {
+    const dots = images.map((_, i) =>
+      `<button class="carousel-dot" onclick="carouselGoTo(${i})"></button>`
+    ).join('');
+    navHtml = `<div class="carousel-nav-row">
+      <button class="carousel-btn" onclick="carouselNav(-1)">◀</button>
+      <div class="carousel-dots" id="carousel-dots">${dots}</div>
+      <button class="carousel-btn" onclick="carouselNav(1)">▶</button>
+    </div>`;
+  }
+
+  return `<div class="images-panel">
+    <button class="images-header" onclick="toggleImagesPanel()">
+      <span>IMAGES</span>
+      <span class="images-chevron">${chevron}</span>
+    </button>
+    <div class="carousel-body" id="carousel-body" style="${bodyStyle}">
+      ${navHtml}
+      <div class="carousel-slide-area">
+        <div id="carousel-status" class="carousel-loading">Loading…</div>
+        <img id="carousel-img" class="carousel-img" alt="" style="display:none">
+        <div id="carousel-caption" class="carousel-caption"></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// Sets up carousel state and loads the first slide.
+function initCarousel(images) {
+  _carouselImages = images;
+  _carouselIndex  = 0;
+  loadCarouselSlide(0);
+}
+
+// Loads a specific slide by index. Drive images are fetched on demand (lazy).
+async function loadCarouselSlide(idx) {
+  const images    = _carouselImages;
+  const img       = images[idx];
+  if (!img) return;
+
+  const imgEl     = document.getElementById('carousel-img');
+  const statusEl  = document.getElementById('carousel-status');
+  const captionEl = document.getElementById('carousel-caption');
+  if (!imgEl) return;
+
+  imgEl.style.display = 'none';
+  if (statusEl) { statusEl.textContent = 'Loading…'; statusEl.style.display = ''; }
+
+  // Update dot indicators
+  document.querySelectorAll('#carousel-dots .carousel-dot').forEach((dot, i) => {
+    dot.classList.toggle('active', i === idx);
+  });
+
+  try {
+    const src = img.type === 'drive' ? await driveGetBlob(img.src) : img.src;
+    // Guard: if the user navigated away while the fetch was in flight, abort
+    if (document.getElementById('carousel-img') !== imgEl) return;
+    imgEl.onload  = () => { imgEl.style.display = ''; if (statusEl) statusEl.style.display = 'none'; };
+    imgEl.onerror = () => { if (statusEl) { statusEl.textContent = 'Could not load image'; } };
+    imgEl.src     = src;
+    if (captionEl) captionEl.textContent = img.caption || '';
+  } catch (e) {
+    if (statusEl) statusEl.textContent = `Error: ${e.message}`;
+  }
+}
+
+function carouselNav(dir) {
+  const n = _carouselImages.length;
+  if (!n) return;
+  _carouselIndex = (_carouselIndex + dir + n) % n;
+  loadCarouselSlide(_carouselIndex);
+}
+
+function carouselGoTo(idx) {
+  _carouselIndex = idx;
+  loadCarouselSlide(idx);
+}
+
+function toggleImagesPanel() {
+  imagesPanelExpanded = !imagesPanelExpanded;
+  const body    = document.getElementById('carousel-body');
+  const chevron = document.querySelector('.images-chevron');
+  if (body)    body.style.display = imagesPanelExpanded ? '' : 'none';
+  if (chevron) chevron.textContent = imagesPanelExpanded ? '▼' : '▶';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
